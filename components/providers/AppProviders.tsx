@@ -1,7 +1,6 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import dynamic from 'next/dynamic';
 import { Toaster, toast } from 'sonner';
 import { LotteryType } from '@/lib/types';
 import {
@@ -15,10 +14,7 @@ import {
   AuthCredential,
 } from '@/lib/firebase';
 
-const DynamicAuthModal = dynamic(
-  () => import('@/components/AuthModal').then((mod) => mod.AuthModal),
-  { ssr: false }
-);
+import { AuthModal } from '@/components/AuthModal';
 
 interface AppStateContextType {
   user: User | null;
@@ -63,10 +59,12 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   // Subscribe to Firebase auth changes
   useEffect(() => {
     if (!auth) {
+      console.warn('LotoVN AI: Firebase Auth chưa khởi tạo (kiểm tra NEXT_PUBLIC_FIREBASE_* trong .env.local).');
       setAuthLoading(false);
       return;
     }
     const unsubscribe = onAuthStateChanged(auth, (current) => {
+      console.log('LotoVN AI: Firebase Auth State Changed ->', current?.email || 'Chưa đăng nhập');
       setUser(current);
       setAuthLoading(false);
     });
@@ -147,7 +145,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       <Toaster position="top-right" richColors theme="dark" />
       {children}
       {isAuthModalOpen && (
-        <DynamicAuthModal
+        <AuthModal
           isOpen={isAuthModalOpen}
           onClose={closeAuthModal}
           onSuccess={() => {}}

@@ -3,7 +3,10 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
+  setPersistence,
+  browserLocalPersistence,
   GoogleAuthProvider,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   signInWithEmailAndPassword,
@@ -36,13 +39,18 @@ const app = isFirebaseConfigured
 
 export const auth = app ? getAuth(app) : null;
 
-/** Lỗi IndexedDB thoáng qua đã biết của Firebase JS SDK (firebase/firebase-js-sdk#2710) — thường do tab mất focus khi popup Google mở/đóng. Không có fix chính thức từ Firebase, cách xử lý cộng đồng khuyến nghị là tải lại trang sạch. */
+/** Lỗi IndexedDB thoáng qua đã biết của Firebase JS SDK. */
 function isTransientStorageError(err: any): boolean {
   const message = String(err?.message || '');
-  return err?.name === 'InvalidStateError' || /database connection is closing/i.test(message);
+  const code = String(err?.code || '');
+  return (
+    err?.name === 'InvalidStateError' ||
+    /database (connection )?is closing/i.test(message) ||
+    /hidden/i.test(message) ||
+    (code === 'auth/internal-error' && /database/i.test(message))
+  );
 }
 
-/** Ném ra khi gặp `isTransientStorageError` — `AuthModal` bắt lỗi này để tự reload trang thay vì hiện thông báo kỹ thuật khó hiểu. */
 export class TransientStorageError extends Error {
   constructor() {
     super('Trình duyệt gặp sự cố tạm thời khi lưu phiên đăng nhập.');
@@ -50,13 +58,6 @@ export class TransientStorageError extends Error {
   }
 }
 
-/**
- * Firebase project này bật "1 tài khoản / 1 email" (không `allowDuplicateEmails`) — nếu
- * 1 email đã đăng ký bằng Email/Password rồi thử "Đăng nhập Google" với cùng email, Firebase
- * từ chối thẳng bằng lỗi `auth/account-exists-with-different-credential` thay vì tự gộp.
- * Ném lỗi này ra để `AuthModal` hướng dẫn người dùng đăng nhập lại bằng mật khẩu rồi tự
- * động liên kết Google vào tài khoản đó (xem `linkPendingGoogleCredential`).
- */
 export class GoogleAccountLinkRequiredError extends Error {
   email: string;
   pendingCredential: AuthCredential;
@@ -69,20 +70,40 @@ export class GoogleAccountLinkRequiredError extends Error {
 }
 
 /**
- * Đăng nhập Google bằng điều hướng cả trang (`signInWithRedirect`) thay vì popup —
- * popup (`signInWithPopup`) gây lỗi IndexedDB "database connection is closing" thoáng
- * qua (firebase-js-sdk#2710) khi tab mất focus lúc popup mở/đóng, gặp thật ở local.
- * Hàm này điều hướng đi luôn nên không trả về user ở đây — dùng `consumeGoogleRedirectResult`
- * ở lần tải trang kế tiếp để lấy kết quả.
+ * Đăng nhập Google tổng hợp: Đặt persistence về localStorage để không bị lỗi IndexedDB,
+ * mở Popup đăng nhập Google và trả về User trực tiếp.
  */
-export async function loginWithGoogleRedirect(): Promise<void> {
+export async function loginWithGoogle(): Promise<User | null> {
   if (!auth) {
-    throw new Error('Firebase chưa được định cấu hình. Vui lòng kiểm tra file biến môi trường (API Key, Project ID).');
+    throw new Error('Firebase chưa được định cấu hình. Vui lòng kiểm tra file biến môi trường.');
   }
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+  } catch (e) {
+    console.warn('LotoVN AI: setPersistence warning', e);
+  }
+
   const provider = new GoogleAuthProvider();
   try {
-    await signInWithRedirect(auth, provider);
+    const res = await signInWithPopup(auth, provider);
+    return res.user;
   } catch (err: any) {
+    console.error('LotoVN AI: loginWithGoogle error ->', err);
+    if (err?.code === 'auth/account-exists-with-different-credential') {
+      const email: string | undefined = err.customData?.email;
+      const pendingCredential = GoogleAuthProvider.credentialFromError(err);
+      if (email && pendingCredential) {
+        throw new GoogleAccountLinkRequiredError(email, pendingCredential);
+      }
+    }
+    if (err?.code === 'auth/popup-closed-by-user') {
+      throw new Error('Bạn đã đóng cửa sổ đăng nhập Google.');
+    }
+    if (err?.code === 'auth/popup-blocked') {
+      // Nếu popup bị trình duyệt chặn hoàn toàn, chuyển hướng redirect
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
     if (isTransientStorageError(err)) {
       throw new TransientStorageError();
     }
@@ -90,11 +111,14 @@ export async function loginWithGoogleRedirect(): Promise<void> {
   }
 }
 
-/**
- * Gọi 1 lần khi app khởi động (`AppProviders`) để lấy kết quả sau khi
- * `signInWithRedirect` điều hướng quay lại. Trả về `null` nếu không có redirect
- * Google nào đang chờ xử lý (tải trang bình thường, không phải quay về từ Google).
- */
+export async function loginWithGoogleRedirect(): Promise<void> {
+  if (!auth) {
+    throw new Error('Firebase chưa được định cấu hình.');
+  }
+  const provider = new GoogleAuthProvider();
+  await signInWithRedirect(auth, provider);
+}
+
 export async function consumeGoogleRedirectResult(): Promise<User | null> {
   if (!auth) return null;
   try {
@@ -108,14 +132,10 @@ export async function consumeGoogleRedirectResult(): Promise<User | null> {
         throw new GoogleAccountLinkRequiredError(email, pendingCredential);
       }
     }
-    if (isTransientStorageError(err)) {
-      throw new TransientStorageError();
-    }
-    throw err;
+    return null;
   }
 }
 
-/** Liên kết credential Google đang chờ (từ `GoogleAccountLinkRequiredError`) vào user vừa đăng nhập bằng email/mật khẩu — sau đó có thể đăng nhập bằng cả 2 cách. */
 export async function linkPendingGoogleCredential(pendingCredential: AuthCredential): Promise<void> {
   if (!auth?.currentUser) {
     throw new Error('Cần đăng nhập trước khi liên kết tài khoản Google.');
@@ -127,6 +147,11 @@ export async function loginWithEmail(email: string, pass: string): Promise<User 
   if (!auth) {
     throw new Error('Firebase chưa được định cấu hình.');
   }
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+  } catch (e) {
+    // ignore
+  }
   const res = await signInWithEmailAndPassword(auth, email, pass);
   return res.user;
 }
@@ -134,6 +159,11 @@ export async function loginWithEmail(email: string, pass: string): Promise<User 
 export async function registerWithEmail(email: string, pass: string): Promise<User | null> {
   if (!auth) {
     throw new Error('Firebase chưa được định cấu hình.');
+  }
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+  } catch (e) {
+    // ignore
   }
   const res = await createUserWithEmailAndPassword(auth, email, pass);
   return res.user;

@@ -1,15 +1,19 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
+  loginWithGoogle,
   loginWithGoogleRedirect,
   loginWithEmail,
   registerWithEmail,
   linkPendingGoogleCredential,
   TransientStorageError,
+  GoogleAccountLinkRequiredError,
   isFirebaseConfigured,
   AuthCredential,
+  User,
 } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,9 +35,7 @@ interface AuthModalProps {
 
 /**
  * Modal đăng nhập/đăng ký tuỳ chọn (Firebase Email/Password + Google).
- * Toàn bộ tính năng thống kê/AI vẫn dùng được đầy đủ mà không cần đăng nhập —
- * modal chỉ phục vụ lưu số yêu thích xuyên thiết bị. Google Sign-in dùng
- * `signInWithRedirect` (điều hướng cả trang) thay vì popup — xem `lib/firebase.ts`.
+ * Nếu tài khoản là Admin (`ADMIN_EMAILS`), tự động điều hướng tới `/admin`.
  */
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
@@ -42,6 +44,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   pendingGoogleLink,
   onLinkConsumed,
 }) => {
+  const router = useRouter();
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -59,20 +62,45 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     ? `Email ${pendingGoogleLink.email} đã đăng ký bằng mật khẩu. Đăng nhập bằng mật khẩu bên dưới để tự động liên kết tài khoản Google.`
     : null;
 
+  const checkAdminAndRedirect = async (loggedUser: User) => {
+    try {
+      const idToken = await loggedUser.getIdToken();
+      const res = await fetch('/api/admin/check', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const json = await res.json();
+      if (json.isAdmin) {
+        toast.success('Xin chào Admin! Đang chuyển hướng tới trang Quản trị...');
+        router.push('/admin');
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  };
+
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
+      let user: User | null = null;
       if (isRegistering) {
-        await registerWithEmail(email, password);
+        user = await registerWithEmail(email, password);
       } else {
-        await loginWithEmail(email, password);
+        user = await loginWithEmail(email, password);
       }
       if (pendingGoogleLink) {
         await linkPendingGoogleCredential(pendingGoogleLink.credential);
         onLinkConsumed?.();
         toast.success('Đã liên kết tài khoản Google — lần sau có thể đăng nhập bằng cả 2 cách.');
+      }
+      if (user) {
+        const isAdmin = await checkAdminAndRedirect(user);
+        if (!isAdmin) {
+          toast.success(`Đăng nhập thành công! Xin chào ${user.displayName || user.email}`);
+        }
       }
       onSuccess();
       onClose();
@@ -92,16 +120,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleGoogleLogin = async () => {
     setError(null);
     setLoading(true);
+    const toastId = toast.loading('Đang mở trang đăng nhập Google...');
     try {
-      // Điều hướng cả trang sang Google — không quay lại đây nếu thành công,
-      // kết quả được `AppProviders` xử lý ở lần tải trang kế tiếp.
-      await loginWithGoogleRedirect();
+      const user = await loginWithGoogle();
+      toast.dismiss(toastId);
+      if (user) {
+        const isAdmin = await checkAdminAndRedirect(user);
+        if (!isAdmin) {
+          toast.success(`Đăng nhập Google thành công! Xin chào ${user.displayName || user.email}`);
+        }
+        onSuccess();
+        onClose();
+      }
     } catch (err: any) {
-      if (err instanceof TransientStorageError) {
-        setError('Trình duyệt gặp sự cố tạm thời. Đang tải lại trang, vui lòng thử đăng nhập Google lại sau khi trang tải xong...');
+      toast.dismiss(toastId);
+      if (err instanceof GoogleAccountLinkRequiredError) {
+        setError(err.message);
+      } else if (err instanceof TransientStorageError) {
+        setError('Trình duyệt gặp sự cố tạm thời. Đang tải lại trang, vui lòng thử lại...');
         setTimeout(() => window.location.reload(), 1500);
       } else {
-        setError(err.message || 'Không thể mở trang đăng nhập Google.');
+        setError(err.message || 'Không thể đăng nhập bằng Google.');
       }
       setLoading(false);
     }
