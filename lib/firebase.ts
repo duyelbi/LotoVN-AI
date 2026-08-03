@@ -35,6 +35,20 @@ const app = isFirebaseConfigured
 
 export const auth = app ? getAuth(app) : null;
 
+/** Lỗi IndexedDB thoáng qua đã biết của Firebase JS SDK (firebase/firebase-js-sdk#2710) — thường do tab mất focus khi popup Google mở/đóng. Không có fix chính thức từ Firebase, cách xử lý cộng đồng khuyến nghị là tải lại trang sạch. */
+function isTransientStorageError(err: any): boolean {
+  const message = String(err?.message || '');
+  return err?.name === 'InvalidStateError' || /database connection is closing/i.test(message);
+}
+
+/** Ném ra khi gặp `isTransientStorageError` — `AuthModal` bắt lỗi này để tự reload trang thay vì hiện thông báo kỹ thuật khó hiểu. */
+export class TransientStorageError extends Error {
+  constructor() {
+    super('Trình duyệt gặp sự cố tạm thời khi lưu phiên đăng nhập.');
+    this.name = 'TransientStorageError';
+  }
+}
+
 /**
  * Firebase project này bật "1 tài khoản / 1 email" (không `allowDuplicateEmails`) — nếu
  * 1 email đã đăng ký bằng Email/Password rồi thử "Đăng nhập Google" với cùng email, Firebase
@@ -68,6 +82,9 @@ export async function loginWithGoogle(): Promise<User | null> {
       if (email && pendingCredential) {
         throw new GoogleAccountLinkRequiredError(email, pendingCredential);
       }
+    }
+    if (isTransientStorageError(err)) {
+      throw new TransientStorageError();
     }
     throw err;
   }

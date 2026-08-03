@@ -8,6 +8,7 @@ import {
   registerWithEmail,
   linkPendingGoogleCredential,
   GoogleAccountLinkRequiredError,
+  TransientStorageError,
   isFirebaseConfigured,
   AuthCredential,
 } from '@/lib/firebase';
@@ -86,6 +87,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         setLinkNotice(
           `Email ${err.email} đã đăng ký bằng mật khẩu. Đăng nhập bằng mật khẩu bên dưới để tự động liên kết tài khoản Google.`
         );
+      } else if (err instanceof TransientStorageError) {
+        setError('Trình duyệt gặp sự cố tạm thời. Đang tải lại trang, vui lòng thử đăng nhập Google lại sau khi trang tải xong...');
+        setTimeout(() => window.location.reload(), 1500);
       } else {
         setError(err.message || 'Đăng nhập Google thất bại.');
       }
