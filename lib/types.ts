@@ -1,5 +1,43 @@
 export type LotteryType = 'mega645' | 'power655';
 
+/**
+ * Số kỳ quay gần nhất được phân tích trên Dashboard (?range= trên URL).
+ * Kept as a numeric enum (not a raw `number`) so every call site is self-documenting
+ * and there is a single source of truth for the allowed values.
+ */
+export enum TimeRange {
+  Last10 = 10,
+  Last30 = 30,
+  Last50 = 50,
+}
+
+/** Danh sách TimeRange hợp lệ, dùng để validate query param và render các nút chọn. */
+export const TIME_RANGE_OPTIONS: TimeRange[] = [
+  TimeRange.Last10,
+  TimeRange.Last30,
+  TimeRange.Last50,
+];
+
+export const DEFAULT_TIME_RANGE = TimeRange.Last30;
+
+/** Bộ lọc xổ số cho danh sách nhật ký gợi ý (?filter= trên URL của trang Suggestions). */
+export enum SuggestionFilter {
+  All = 'all',
+  Mega645 = 'mega645',
+  Power655 = 'power655',
+}
+
+export const DEFAULT_SUGGESTION_FILTER = SuggestionFilter.All;
+
+/**
+ * Số kỳ liên tiếp vắng mặt tối thiểu để một con số được coi là "gan cực đại".
+ * Không enum hoá `LotteryType` — TypeScript string-literal union đã đóng vai trò
+ * tương đương một enum (type-safe, exhaustive) và được dùng làm giá trị lưu trực tiếp
+ * trong MongoDB/API; chuyển sang `enum` sẽ đụng ~90 nơi so sánh chuỗi hiện có mà
+ * không mang lại lợi ích type-safety nào thêm.
+ */
+export const GAN_THRESHOLD = 8;
+
 export interface DrawRecord {
   id: string; // e.g., "#01124"
   lotteryType: LotteryType;
@@ -43,6 +81,19 @@ export interface TrendDataPoint {
   sumNumbers: number;
   maxNumber: number;
   minNumber: number;
+}
+
+export interface LotteryStats {
+  lotteryType: LotteryType;
+  totalDrawsAnalyzed: number;
+  numberStats: NumberStat[];
+  evenOdd: EvenOddStat[];
+  highLow: HighLowStat[];
+  trend: TrendDataPoint[];
+  hotNumbers: NumberStat[];
+  coldNumbers: NumberStat[];
+  overdueNumbers: NumberStat[];
+  latestDraw: DrawRecord | null;
 }
 
 export interface SuggestionItem {

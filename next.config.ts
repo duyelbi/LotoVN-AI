@@ -2,8 +2,9 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  eslint: {
-    ignoreDuringBuilds: true,
+  turbopack: {},
+  experimental: {
+    useTypeScriptCli: true,
   },
   typescript: {
     ignoreBuildErrors: false,

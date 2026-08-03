@@ -7,7 +7,14 @@ import {
   registerWithEmail,
   isFirebaseConfigured,
 } from '@/lib/firebase';
-import { X, Shield, Lock, Mail, AlertCircle, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Shield, Lock, Mail, AlertCircle, Sparkles } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -15,14 +22,17 @@ interface AuthModalProps {
   onSuccess: () => void;
 }
 
+/**
+ * Modal đăng nhập/đăng ký tuỳ chọn (Firebase Email/Password + Google).
+ * Toàn bộ tính năng thống kê/AI vẫn dùng được đầy đủ mà không cần đăng nhập —
+ * modal chỉ phục vụ lưu số yêu thích xuyên thiết bị.
+ */
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  if (!isOpen) return null;
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,29 +70,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-0 overflow-hidden text-slate-100">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-800/80">
+        <DialogHeader className="p-6 border-b border-slate-800/80">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold text-sm">
               <Lock className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-100">
+              <DialogTitle className="text-base font-bold text-slate-100">
                 {isRegistering ? 'Đăng Ký Tài Khoản Tùy Chọn' : 'Đăng Nhập Tùy Chọn'}
-              </h3>
+              </DialogTitle>
               <p className="text-xs text-slate-400">Lưu số yêu thích và theo dõi trên nhiều thiết bị</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+        </DialogHeader>
 
         {/* Disclaimer box */}
         <div className="bg-teal-500/10 border-b border-teal-500/20 px-6 py-3 flex items-start gap-2.5">
@@ -110,15 +113,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           )}
 
           {/* Google Sign-in */}
-          <button
+          <Button
             type="button"
             onClick={handleGoogleLogin}
             disabled={loading || !isFirebaseConfigured}
-            className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-slate-200 font-medium text-sm border border-slate-700 transition-all disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-slate-200 font-medium text-sm border border-slate-700 transition-all disabled:opacity-50 h-auto"
           >
             <Sparkles className="w-4 h-4 text-teal-400" />
             <span>Tiếp tục với Google</span>
-          </button>
+          </Button>
 
           <div className="flex items-center gap-3 my-2">
             <div className="h-px bg-slate-800 flex-1" />
@@ -159,17 +162,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               />
             </div>
 
-            <button
+            <Button
               type="submit"
               disabled={loading || !isFirebaseConfigured}
-              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-400 hover:to-indigo-500 text-slate-950 font-bold text-sm shadow-md transition-all disabled:opacity-50"
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-400 hover:to-indigo-500 text-slate-950 font-bold text-sm shadow-md transition-all disabled:opacity-50 h-auto border-0"
             >
               {loading
                 ? 'Đang xử lý...'
                 : isRegistering
                 ? 'Đăng ký tài khoản'
                 : 'Đăng nhập'}
-            </button>
+            </Button>
           </form>
 
           {/* Switch Register/Login */}
@@ -188,7 +191,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };

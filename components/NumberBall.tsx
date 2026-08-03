@@ -1,7 +1,5 @@
-'use client';
-
 import React from 'react';
-import { NumberStat } from '@/lib/types';
+import { GAN_THRESHOLD } from '@/lib/types';
 
 interface NumberBallProps {
   number: number;
@@ -13,6 +11,11 @@ interface NumberBallProps {
   isFavorite?: boolean;
 }
 
+/**
+ * Quả bóng số dùng ở mọi nơi trong app (dashboard, gợi ý, lịch sử, chat).
+ * Màu sắc phản ánh đúng `status` thống kê thật — không dùng màu "nóng" cho số
+ * không có ý nghĩa tần suất (xem AGENTS.md, phần "Lỗi đã biết").
+ */
 export const NumberBall: React.FC<NumberBallProps> = ({
   number,
   status = 'default',
@@ -56,7 +59,7 @@ export const NumberBall: React.FC<NumberBallProps> = ({
       {showDroughtBadge && drought !== undefined && drought > 0 && (
         <span
           className={`absolute -bottom-2 px-1.5 py-0.5 text-[10px] font-medium rounded-full border ${
-            drought >= 8
+            drought >= GAN_THRESHOLD
               ? 'bg-amber-950/90 text-amber-300 border-amber-500/50'
               : 'bg-slate-900/90 text-slate-400 border-slate-700'
           }`}

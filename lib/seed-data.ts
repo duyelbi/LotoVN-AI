@@ -1,4 +1,4 @@
-import { DrawRecord, LotteryType, NumberStat, EvenOddStat, HighLowStat, TrendDataPoint, SuggestionRecord } from './types';
+import { DrawRecord, LotteryType, NumberStat, EvenOddStat, HighLowStat, TrendDataPoint, SuggestionRecord, GAN_THRESHOLD } from './types';
 
 // ==========================================
 // SEED HISTORICAL DRAWS: MEGA 6/45 (45 balls)
@@ -680,7 +680,7 @@ export function calculateNumberStats(draws: DrawRecord[], lotteryType: LotteryTy
     const diffFromExpected = Number((count - expectedCount).toFixed(1));
 
     let status: NumberStat['status'] = 'warm';
-    if (drought >= 8) {
+    if (drought >= GAN_THRESHOLD) {
       status = 'gan_cuc_dai';
     } else if (count >= expectedCount * 1.25) {
       status = 'hot';

@@ -1,7 +1,9 @@
+import { cache } from 'react';
 import { MongoClient, Db } from 'mongodb';
 import {
   DrawRecord,
   LotteryType,
+  LotteryStats,
   NumberStat,
   SuggestionRecord,
   EvenOddStat,
@@ -26,6 +28,9 @@ let memorySuggestions: SuggestionRecord[] = [...SEED_SUGGESTION_LOGS];
 
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
+let connectPromise: Promise<Db | null> | null = null;
+let lastFailedTime = 0;
+const RETRY_COOLDOWN_MS = 60000; // 60s cooldown on connection failures
 
 async function getMongoDb(): Promise<Db | null> {
   const uri = process.env.MONGODB_URI;
@@ -37,21 +42,46 @@ async function getMongoDb(): Promise<Db | null> {
     return cachedDb;
   }
 
-  try {
-    cachedClient = new MongoClient(uri);
-    await cachedClient.connect();
-    cachedDb = cachedClient.db('lotovn_ai');
-    return cachedDb;
-  } catch (err) {
-    console.warn('MongoDB connection failed, falling back to local seed data:', err);
+  // Fast-fail if recent connection attempt failed
+  if (Date.now() - lastFailedTime < RETRY_COOLDOWN_MS) {
     return null;
   }
+
+  if (connectPromise) {
+    return connectPromise;
+  }
+
+  connectPromise = (async () => {
+    try {
+      cachedClient = new MongoClient(uri, {
+        serverSelectionTimeoutMS: 3000,
+        connectTimeoutMS: 3000,
+      });
+      await cachedClient.connect();
+      cachedDb = cachedClient.db('lotovn_ai');
+      return cachedDb;
+    } catch (err) {
+      console.warn('MongoDB connection failed, falling back to local seed data:', err);
+      lastFailedTime = Date.now();
+      if (cachedClient) {
+        try {
+          await cachedClient.close();
+        } catch (_) {}
+        cachedClient = null;
+      }
+      return null;
+    } finally {
+      connectPromise = null;
+    }
+  })();
+
+  return connectPromise;
 }
 
 // ----------------------------------------------------
 // DRAWS REPOSITORY
 // ----------------------------------------------------
-export async function getDraws(lotteryType: LotteryType, limit = 50): Promise<DrawRecord[]> {
+export const getDraws = cache(async (lotteryType: LotteryType, limit = 50): Promise<DrawRecord[]> => {
   const db = await getMongoDb();
   if (db) {
     try {
@@ -83,7 +113,7 @@ export async function getDraws(lotteryType: LotteryType, limit = 50): Promise<Dr
   return [...list]
     .sort((a, b) => new Date(b.drawDate).getTime() - new Date(a.drawDate).getTime())
     .slice(0, limit);
-}
+});
 
 export async function addDraw(draw: Omit<DrawRecord, 'createdAt'>): Promise<DrawRecord> {
   const newRecord: DrawRecord = {
@@ -115,7 +145,7 @@ export async function addDraw(draw: Omit<DrawRecord, 'createdAt'>): Promise<Draw
 // ----------------------------------------------------
 // STATISTICS
 // ----------------------------------------------------
-export async function getLotteryStats(lotteryType: LotteryType, timeRangeDraws = 30) {
+export const getLotteryStats = cache(async (lotteryType: LotteryType, timeRangeDraws = 30): Promise<LotteryStats> => {
   const draws = await getDraws(lotteryType, timeRangeDraws);
   const numberStats = calculateNumberStats(draws, lotteryType);
   const evenOdd = calculateEvenOdd(draws);
@@ -139,12 +169,12 @@ export async function getLotteryStats(lotteryType: LotteryType, timeRangeDraws =
     overdueNumbers,
     latestDraw: draws[0] || null,
   };
-}
+});
 
 // ----------------------------------------------------
 // SUGGESTIONS REPOSITORY & ACCURACY TRACKING
 // ----------------------------------------------------
-export async function getSuggestionLogs(lotteryType?: LotteryType): Promise<SuggestionRecord[]> {
+export const getSuggestionLogs = cache(async (lotteryType?: LotteryType): Promise<SuggestionRecord[]> => {
   const db = await getMongoDb();
   if (db) {
     try {
@@ -167,7 +197,7 @@ export async function getSuggestionLogs(lotteryType?: LotteryType): Promise<Sugg
     ? memorySuggestions.filter((s) => s.lotteryType === lotteryType)
     : memorySuggestions;
   return [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-}
+});
 
 export async function saveSuggestionLog(suggestion: SuggestionRecord): Promise<SuggestionRecord> {
   const db = await getMongoDb();

@@ -23,6 +23,11 @@ interface ChatTabProps {
   selectedLottery: LotteryType;
 }
 
+/**
+ * Nội dung trang Chat (`/chat`): hỏi-đáp với trợ lý AI (POST `/api/chat`, grounded bằng
+ * số liệu thật từ MongoDB). Thuần Client Component — lịch sử hội thoại chỉ tồn tại
+ * trong session, không lưu server-side.
+ */
 export const ChatTab: React.FC<ChatTabProps> = ({ selectedLottery }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {

@@ -1,17 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLotteryStats } from '@/lib/db';
-import { GoogleGenAI } from '@google/genai';
-
-let geminiClient: GoogleGenAI | null = null;
-function getGemini(): GoogleGenAI | null {
-  if (!geminiClient) {
-    const key = process.env.GEMINI_API_KEY;
-    if (key) {
-      geminiClient = new GoogleGenAI({ apiKey: key });
-    }
-  }
-  return geminiClient;
-}
+import { getGemini } from '@/lib/gemini';
 
 export async function POST(req: NextRequest) {
   try {

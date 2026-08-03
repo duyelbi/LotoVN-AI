@@ -1,8 +1,7 @@
-'use client';
-
 import React from 'react';
 import { ShieldCheck, Cpu, Database } from 'lucide-react';
 
+/** Footer tĩnh dùng chung cho mọi route — nhắc lại triết lý minh bạch/không tâm linh của app. Không có state, render ở server. */
 export const Footer: React.FC = () => {
   return (
     <footer className="bg-slate-950 border-t border-slate-800/80 py-10 mt-12">
@@ -25,18 +24,18 @@ export const Footer: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-slate-400">
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-5 sm:gap-4 text-xs text-slate-400">
+            <div className="flex flex-col md:flex-row items-center gap-1 md:gap-1.5 text-center">
               <ShieldCheck className="w-4 h-4 text-teal-400" />
               <span>Không tâm linh</span>
             </div>
-            <span>•</span>
-            <div className="flex items-center gap-1.5">
+            <span className="hidden md:inline">•</span>
+            <div className="flex flex-col md:flex-row items-center gap-1 md:gap-1.5 text-center">
               <Cpu className="w-4 h-4 text-indigo-400" />
               <span>AI Grounded</span>
             </div>
-            <span>•</span>
-            <div className="flex items-center gap-1.5">
+            <span className="hidden md:inline">•</span>
+            <div className="flex flex-col md:flex-row items-center gap-1 md:gap-1.5 text-center">
               <Database className="w-4 h-4 text-sky-400" />
               <span>MongoDB / Seed</span>
             </div>

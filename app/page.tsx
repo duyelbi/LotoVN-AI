@@ -1,108 +1,50 @@
-'use client';
+import React from 'react';
+import type { Metadata } from 'next';
+import { LotteryType, TimeRange, TIME_RANGE_OPTIONS, DEFAULT_TIME_RANGE } from '@/lib/types';
+import { DashboardControls } from '@/components/dashboard/DashboardControls';
+import { KpiCards } from '@/components/dashboard/KpiCards';
+import { FrequencyChart } from '@/components/dashboard/FrequencyChart';
+import { OverdueChart } from '@/components/dashboard/OverdueChart';
+import { NumberMatrix } from '@/components/dashboard/NumberMatrix';
+import { DrawHistoryTable } from '@/components/dashboard/DrawHistoryTable';
 
-import React, { useState, useEffect } from 'react';
-import { LotteryType } from '@/lib/types';
-import { Navbar, NavTab } from '@/components/Navbar';
-import { DashboardTab } from '@/components/DashboardTab';
-import { SuggestionsTab } from '@/components/SuggestionsTab';
-import { ChatTab } from '@/components/ChatTab';
-import { EducationTab } from '@/components/EducationTab';
-import { AuthModal } from '@/components/AuthModal';
-import { Footer } from '@/components/Footer';
-import { auth, onAuthStateChanged, logOut, User } from '@/lib/firebase';
+export const metadata: Metadata = {
+  title: 'Thống Kê & Tần Suất Vietlott | LotoVN AI',
+  description:
+    'Bảng tần suất xuất hiện, thống kê số nóng, số gan lâu chưa về, phân bố chẵn/lẻ và cao/thấp cho Vietlott Mega 6/45 và Power 6/55.',
+};
 
-export default function LotoVnAiPage() {
-  const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
-  const [selectedLottery, setSelectedLottery] = useState<LotteryType>('mega645');
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [favoriteNumbers, setFavoriteNumbers] = useState<number[]>([]);
+interface PageProps {
+  searchParams?: Promise<{
+    type?: string;
+    range?: string;
+  }>;
+}
 
-  // Subscribe to optional Firebase auth changes
-  useEffect(() => {
-    if (!auth) return;
-    const unsubscribe = onAuthStateChanged(auth, (current) => {
-      setUser(current);
-    });
-    return () => unsubscribe();
-  }, []);
+/** Trang Dashboard (`/`). Mỗi khối UI bên dưới tự fetch dữ liệu và tự stream qua Suspense riêng — trang này chỉ parse searchParams rồi compose lại. */
+export default async function DashboardPage(props: PageProps) {
+  const searchParams = await props.searchParams;
+  const rawType = searchParams?.type;
+  const selectedLottery: LotteryType = rawType === 'power655' ? 'power655' : 'mega645';
 
-  // Load favorites from local storage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(`lotovn_fav_${selectedLottery}`);
-      const parsed = saved ? JSON.parse(saved) : [];
-      const timer = setTimeout(() => {
-        setFavoriteNumbers(parsed);
-      }, 0);
-      return () => clearTimeout(timer);
-    } catch (e) {
-      console.warn('Cannot read favorites from localStorage');
-    }
-  }, [selectedLottery]);
-
-  const handleToggleFavorite = (num: number) => {
-    setFavoriteNumbers((prev) => {
-      const exists = prev.includes(num);
-      const updated = exists ? prev.filter((x) => x !== num) : [...prev, num];
-      try {
-        localStorage.setItem(`lotovn_fav_${selectedLottery}`, JSON.stringify(updated));
-      } catch (e) {
-        // ignore
-      }
-      return updated;
-    });
-  };
-
-  const handleLogout = async () => {
-    await logOut();
-    setUser(null);
-  };
+  const rawRange = searchParams?.range;
+  const parsedRange = rawRange ? parseInt(rawRange, 10) : DEFAULT_TIME_RANGE;
+  const range: TimeRange = TIME_RANGE_OPTIONS.includes(parsedRange as TimeRange)
+    ? (parsedRange as TimeRange)
+    : DEFAULT_TIME_RANGE;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-teal-500/30 selection:text-teal-200 pb-20 md:pb-0">
-      <Navbar
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        selectedLottery={selectedLottery}
-        onSelectLottery={setSelectedLottery}
-        user={user}
-        onOpenAuthModal={() => setIsAuthModalOpen(true)}
-        onLogout={handleLogout}
-      />
+    <div className="space-y-8 pb-12">
+      <DashboardControls selectedLottery={selectedLottery} range={range} />
+      <KpiCards lotteryType={selectedLottery} range={range} />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {activeTab === 'dashboard' && (
-          <DashboardTab
-            selectedLottery={selectedLottery}
-            favoriteNumbers={favoriteNumbers}
-            onToggleFavorite={handleToggleFavorite}
-          />
-        )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <FrequencyChart lotteryType={selectedLottery} range={range} />
+        <OverdueChart lotteryType={selectedLottery} range={range} />
+      </div>
 
-        {activeTab === 'suggestions' && (
-          <SuggestionsTab
-            selectedLottery={selectedLottery}
-            userId={user?.uid}
-            favoriteNumbers={favoriteNumbers}
-            onToggleFavorite={handleToggleFavorite}
-          />
-        )}
-
-        {activeTab === 'chat' && (
-          <ChatTab selectedLottery={selectedLottery} />
-        )}
-
-        {activeTab === 'education' && <EducationTab />}
-      </main>
-
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onSuccess={() => {}}
-      />
-
-      <Footer />
+      <NumberMatrix lotteryType={selectedLottery} range={range} />
+      <DrawHistoryTable lotteryType={selectedLottery} range={range} />
     </div>
   );
 }

@@ -1,1 +1,77 @@
 @import "tailwindcss";
+
+/* LotoVN AI luôn chạy dark theme (xem app/layout.tsx: <html className="dark">).
+   Định nghĩa 1 bộ giá trị duy nhất khớp bảng màu "Sophisticated Dark" hiện có
+   (slate/zinc nền, accent teal/indigo) — KHÔNG dùng màu mặc định của shadcn. */
+:root,
+.dark {
+  --background: #020617; /* slate-950 */
+  --foreground: #f1f5f9; /* slate-100 */
+
+  --card: #0f172a; /* slate-900 */
+  --card-foreground: #f1f5f9;
+
+  --popover: #0f172a; /* slate-900 — khớp bg-slate-900 đang dùng cho dropdown/modal */
+  --popover-foreground: #f1f5f9;
+
+  --primary: #14b8a6; /* teal-500 */
+  --primary-foreground: #020617;
+
+  --secondary: #1e293b; /* slate-800 */
+  --secondary-foreground: #f1f5f9;
+
+  --muted: #1e293b; /* slate-800 */
+  --muted-foreground: #94a3b8; /* slate-400 */
+
+  --accent: #1e293b; /* slate-800 */
+  --accent-foreground: #5eead4; /* teal-300 */
+
+  --destructive: #ef4444; /* red-500 */
+  --destructive-foreground: #f1f5f9;
+
+  --border: #1e293b; /* slate-800 — khớp border-slate-800 đang dùng khắp app */
+  --input: #1e293b;
+  --ring: #14b8a6; /* teal-500 */
+
+  --radius: 0.75rem;
+
+  /* Màu series cho biểu đồ (ChartConfig trong components/dashboard/*Client.tsx) */
+  --chart-1: #14b8a6; /* teal-500 */
+  --chart-2: #6366f1; /* indigo-500 */
+  --chart-3: #38bdf8; /* sky-400 */
+  --chart-4: #fbbf24; /* amber-400 */
+  --chart-5: #34d399; /* emerald-400 */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}

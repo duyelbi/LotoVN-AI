@@ -2,18 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDraws, getSuggestionLogs, saveSuggestionLog } from '@/lib/db';
 import { generateStatisticalSuggestion } from '@/lib/seed-data';
 import { LotteryType } from '@/lib/types';
-import { GoogleGenAI } from '@google/genai';
-
-let geminiClient: GoogleGenAI | null = null;
-function getGemini(): GoogleGenAI | null {
-  if (!geminiClient) {
-    const key = process.env.GEMINI_API_KEY;
-    if (key) {
-      geminiClient = new GoogleGenAI({ apiKey: key });
-    }
-  }
-  return geminiClient;
-}
+import { getGemini } from '@/lib/gemini';
 
 export async function GET(req: NextRequest) {
   try {
