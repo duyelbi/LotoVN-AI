@@ -4,7 +4,8 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   GoogleAuthProvider,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
@@ -67,14 +68,38 @@ export class GoogleAccountLinkRequiredError extends Error {
   }
 }
 
-export async function loginWithGoogle(): Promise<User | null> {
+/**
+ * Đăng nhập Google bằng điều hướng cả trang (`signInWithRedirect`) thay vì popup —
+ * popup (`signInWithPopup`) gây lỗi IndexedDB "database connection is closing" thoáng
+ * qua (firebase-js-sdk#2710) khi tab mất focus lúc popup mở/đóng, gặp thật ở local.
+ * Hàm này điều hướng đi luôn nên không trả về user ở đây — dùng `consumeGoogleRedirectResult`
+ * ở lần tải trang kế tiếp để lấy kết quả.
+ */
+export async function loginWithGoogleRedirect(): Promise<void> {
   if (!auth) {
     throw new Error('Firebase chưa được định cấu hình. Vui lòng kiểm tra file biến môi trường (API Key, Project ID).');
   }
   const provider = new GoogleAuthProvider();
   try {
-    const res = await signInWithPopup(auth, provider);
-    return res.user;
+    await signInWithRedirect(auth, provider);
+  } catch (err: any) {
+    if (isTransientStorageError(err)) {
+      throw new TransientStorageError();
+    }
+    throw err;
+  }
+}
+
+/**
+ * Gọi 1 lần khi app khởi động (`AppProviders`) để lấy kết quả sau khi
+ * `signInWithRedirect` điều hướng quay lại. Trả về `null` nếu không có redirect
+ * Google nào đang chờ xử lý (tải trang bình thường, không phải quay về từ Google).
+ */
+export async function consumeGoogleRedirectResult(): Promise<User | null> {
+  if (!auth) return null;
+  try {
+    const res = await getRedirectResult(auth);
+    return res?.user ?? null;
   } catch (err: any) {
     if (err?.code === 'auth/account-exists-with-different-credential') {
       const email: string | undefined = err.customData?.email;

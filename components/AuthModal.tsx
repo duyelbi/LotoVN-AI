@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import {
-  loginWithGoogle,
+  loginWithGoogleRedirect,
   loginWithEmail,
   registerWithEmail,
   linkPendingGoogleCredential,
-  GoogleAccountLinkRequiredError,
   TransientStorageError,
   isFirebaseConfigured,
   AuthCredential,
@@ -25,21 +24,40 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** Set bởi `AppProviders` khi `signInWithRedirect` quay lại với `auth/account-exists-with-different-credential`. */
+  pendingGoogleLink?: { email: string; credential: AuthCredential } | null;
+  onLinkConsumed?: () => void;
 }
 
 /**
  * Modal đăng nhập/đăng ký tuỳ chọn (Firebase Email/Password + Google).
  * Toàn bộ tính năng thống kê/AI vẫn dùng được đầy đủ mà không cần đăng nhập —
- * modal chỉ phục vụ lưu số yêu thích xuyên thiết bị.
+ * modal chỉ phục vụ lưu số yêu thích xuyên thiết bị. Google Sign-in dùng
+ * `signInWithRedirect` (điều hướng cả trang) thay vì popup — xem `lib/firebase.ts`.
  */
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  pendingGoogleLink,
+  onLinkConsumed,
+}) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [linkNotice, setLinkNotice] = useState<string | null>(null);
-  const [pendingGoogleCredential, setPendingGoogleCredential] = useState<AuthCredential | null>(null);
+
+  useEffect(() => {
+    if (pendingGoogleLink) {
+      setEmail(pendingGoogleLink.email);
+      setIsRegistering(false);
+    }
+  }, [pendingGoogleLink]);
+
+  const linkNotice = pendingGoogleLink
+    ? `Email ${pendingGoogleLink.email} đã đăng ký bằng mật khẩu. Đăng nhập bằng mật khẩu bên dưới để tự động liên kết tài khoản Google.`
+    : null;
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,9 +69,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       } else {
         await loginWithEmail(email, password);
       }
-      if (pendingGoogleCredential) {
-        await linkPendingGoogleCredential(pendingGoogleCredential);
-        setPendingGoogleCredential(null);
+      if (pendingGoogleLink) {
+        await linkPendingGoogleCredential(pendingGoogleLink.credential);
+        onLinkConsumed?.();
         toast.success('Đã liên kết tài khoản Google — lần sau có thể đăng nhập bằng cả 2 cách.');
       }
       onSuccess();
@@ -73,27 +91,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   const handleGoogleLogin = async () => {
     setError(null);
-    setLinkNotice(null);
     setLoading(true);
     try {
-      await loginWithGoogle();
-      onSuccess();
-      onClose();
+      // Điều hướng cả trang sang Google — không quay lại đây nếu thành công,
+      // kết quả được `AppProviders` xử lý ở lần tải trang kế tiếp.
+      await loginWithGoogleRedirect();
     } catch (err: any) {
-      if (err instanceof GoogleAccountLinkRequiredError) {
-        setEmail(err.email);
-        setIsRegistering(false);
-        setPendingGoogleCredential(err.pendingCredential);
-        setLinkNotice(
-          `Email ${err.email} đã đăng ký bằng mật khẩu. Đăng nhập bằng mật khẩu bên dưới để tự động liên kết tài khoản Google.`
-        );
-      } else if (err instanceof TransientStorageError) {
+      if (err instanceof TransientStorageError) {
         setError('Trình duyệt gặp sự cố tạm thời. Đang tải lại trang, vui lòng thử đăng nhập Google lại sau khi trang tải xong...');
         setTimeout(() => window.location.reload(), 1500);
       } else {
-        setError(err.message || 'Đăng nhập Google thất bại.');
+        setError(err.message || 'Không thể mở trang đăng nhập Google.');
       }
-    } finally {
       setLoading(false);
     }
   };

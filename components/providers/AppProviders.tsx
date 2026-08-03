@@ -2,9 +2,18 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { LotteryType } from '@/lib/types';
-import { auth, onAuthStateChanged, logOut, User } from '@/lib/firebase';
+import {
+  auth,
+  onAuthStateChanged,
+  logOut,
+  consumeGoogleRedirectResult,
+  GoogleAccountLinkRequiredError,
+  TransientStorageError,
+  User,
+  AuthCredential,
+} from '@/lib/firebase';
 
 const DynamicAuthModal = dynamic(
   () => import('@/components/AuthModal').then((mod) => mod.AuthModal),
@@ -21,6 +30,8 @@ interface AppStateContextType {
   closeAuthModal: () => void;
   handleLogout: () => Promise<void>;
   loadFavoritesForLottery: (type: LotteryType) => void;
+  pendingGoogleLink: { email: string; credential: AuthCredential } | null;
+  clearPendingGoogleLink: () => void;
 }
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
@@ -36,6 +47,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [activeLotteryType, setActiveLotteryType] = useState<LotteryType>('mega645');
+  const [pendingGoogleLink, setPendingGoogleLink] = useState<{ email: string; credential: AuthCredential } | null>(null);
 
   // Lazy state initialization for favorite numbers from localStorage
   const [favoriteNumbers, setFavoriteNumbers] = useState<number[]>(() => {
@@ -59,6 +71,29 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       setAuthLoading(false);
     });
     return () => unsubscribe();
+  }, []);
+
+  // Lấy kết quả đăng nhập Google sau khi `signInWithRedirect` điều hướng quay lại trang.
+  // Chỉ chạy 1 lần khi app khởi động — `getRedirectResult` tự trả `null` nếu không có
+  // redirect Google nào đang chờ xử lý (tải trang bình thường).
+  useEffect(() => {
+    if (!auth) return;
+    consumeGoogleRedirectResult()
+      .then((redirectedUser) => {
+        if (redirectedUser) {
+          toast.success('Đăng nhập Google thành công!');
+        }
+      })
+      .catch((err: any) => {
+        if (err instanceof GoogleAccountLinkRequiredError) {
+          setPendingGoogleLink({ email: err.email, credential: err.pendingCredential });
+          setIsAuthModalOpen(true);
+        } else if (err instanceof TransientStorageError) {
+          toast.error('Trình duyệt gặp sự cố tạm thời khi đăng nhập Google. Vui lòng thử lại.');
+        } else {
+          toast.error(err?.message || 'Đăng nhập Google thất bại.');
+        }
+      });
   }, []);
 
   const loadFavoritesForLottery = useCallback((type: LotteryType) => {
@@ -86,6 +121,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
 
   const openAuthModal = useCallback(() => setIsAuthModalOpen(true), []);
   const closeAuthModal = useCallback(() => setIsAuthModalOpen(false), []);
+  const clearPendingGoogleLink = useCallback(() => setPendingGoogleLink(null), []);
 
   const handleLogout = useCallback(async () => {
     await logOut();
@@ -104,6 +140,8 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
         closeAuthModal,
         handleLogout,
         loadFavoritesForLottery,
+        pendingGoogleLink,
+        clearPendingGoogleLink,
       }}
     >
       <Toaster position="top-right" richColors theme="dark" />
@@ -113,6 +151,8 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
           isOpen={isAuthModalOpen}
           onClose={closeAuthModal}
           onSuccess={() => {}}
+          pendingGoogleLink={pendingGoogleLink}
+          onLinkConsumed={clearPendingGoogleLink}
         />
       )}
     </AppStateContext.Provider>
