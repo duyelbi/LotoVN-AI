@@ -71,6 +71,20 @@ Dashboard (`/`) và Suggestions (`/suggestions`) dùng streaming SSR: mỗi kh�
 
 Mỗi component export (kể cả các hàm `Content`/`Client` nội bộ không export) cần 1 đoạn JSDoc ngắn (1-4 dòng) ngay trên khai báo, mô tả component làm gì và lưu ý quan trọng (ví dụ: vì sao là async Server Component, vì sao tách Client riêng). Không viết JSDoc dài dòng liệt kê từng prop — tên prop + TypeScript interface đã đủ tự giải thích.
 
+## Cron job đồng bộ kỳ quay (`app/api/cron/sync-draws`)
+
+Vietlott KHÔNG có API công khai chính thức — trang kết quả là ASP.NET WebForms cũ, tải bảng qua RPC nội bộ "AjaxPro" (không phải REST/JSON thông thường). `lib/vietlott-source.ts` xử lý việc này theo 2 tầng:
+
+1. **Nguồn chính** — gọi thẳng endpoint AjaxPro của vietlott.vn (`OFFICIAL_ENDPOINTS`), parse HTML trả về bằng `cheerio`. Request body/header tham khảo từ mã nguồn mở MIT license [vietvudanh/vietlott-data](https://github.com/vietvudanh/vietlott-data), đã tự verify khớp 100% với trang chính thức.
+2. **Nguồn dự phòng** — nếu nguồn chính lỗi (`try/catch` tự động), fallback sang file `.jsonl` của cùng repo trên (cập nhật ~00:01 hàng ngày).
+
+**Lưu ý quan trọng đã verify thực tế**: gọi nguồn chính từ Cloud Run (`asia-southeast1`) bị Vietlott trả về **HTTP 403** — nhiều khả năng họ chặn dải IP của các nhà cung cấp cloud lớn để chống bot. Từ máy cá nhân/local dev thì gọi được bình thường. Vì vậy trong production hệ thống sẽ chủ yếu chạy qua nguồn dự phòng (đã verify dữ liệu khớp chính xác với nguồn chính) — đây là giới hạn hạ tầng thực tế, KHÔNG cố gắng "qua mặt" chặn IP (đổi User-Agent, dùng proxy...) — không phù hợp về mặt đạo đức/ToS cho một bài dự thi.
+
+**Bảo mật & vận hành**:
+- Endpoint yêu cầu header `Authorization: Bearer <CRON_SECRET>`, secret lưu ở Secret Manager (`cron-secret`), gắn vào Cloud Run qua `--set-secrets`, KHÔNG lưu plain env var.
+- Idempotent — so sánh `id` với draw đã có trong DB trước khi insert, gọi lại nhiều lần trong ngày không tạo bản ghi trùng.
+- Kích hoạt bởi Cloud Scheduler job `vietlott-sync-draws-daily` (region `asia-southeast1`), chạy `0 1 * * *` giờ `Asia/Ho_Chi_Minh` — chạy hàng ngày (không cố khớp đúng lịch quay Mega/Power riêng biệt) vì logic idempotent nên chạy thừa không hại gì, đơn giản hơn nhiều so với 2 lịch riêng.
+
 ## Lỗi đã biết — đừng tái tạo lại
 
 - **`grid-cols-15` (và các số cột/hàng grid bất kỳ) là hợp lệ trong Tailwind v4** — v4 sinh utility `grid-cols-N`/`grid-rows-N` động cho mọi số nguyên dương, không giới hạn ở thang 1-12 như v3. Đã verify bằng `@tailwindcss/cli` thực tế: `grid-cols-15` sinh đúng `grid-template-columns: repeat(15, minmax(0, 1fr))`. KHÔNG đổi thành `grid-cols-[repeat(15,minmax(0,1fr))]` — đó là dạng thừa, không cần thiết trong project này (đã từng bị "sửa" sai 3 lần trong lịch sử, gây nhầm lẫn — giữ nguyên dạng `grid-cols-15` trong `MonteCarloSimulator.tsx`).
