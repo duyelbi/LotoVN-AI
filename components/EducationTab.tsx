@@ -136,7 +136,7 @@ export const EducationTab: React.FC = () => {
               </span>
             </div>
 
-            <div className="grid grid-cols-5 sm:grid-cols-9 md:grid-cols-15 gap-2 max-h-72 overflow-y-auto p-2 bg-slate-950/60 rounded-xl border border-slate-800">
+            <div className="grid grid-cols-5 sm:grid-cols-9 md:grid-cols-[repeat(15,minmax(0,1fr))] gap-2 max-h-72 overflow-y-auto p-2 bg-slate-950/60 rounded-xl border border-slate-800">
               {simResults.map((res) => {
                 const diff = Math.abs(parseFloat(res.percent) - 13.3);
                 return (
