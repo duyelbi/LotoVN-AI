@@ -81,9 +81,29 @@ Vietlott KHÔNG có API công khai chính thức — trang kết quả là ASP.N
 **Lưu ý quan trọng đã verify thực tế**: gọi nguồn chính từ Cloud Run (`asia-southeast1`) bị Vietlott trả về **HTTP 403** — nhiều khả năng họ chặn dải IP của các nhà cung cấp cloud lớn để chống bot. Từ máy cá nhân/local dev thì gọi được bình thường. Vì vậy trong production hệ thống sẽ chủ yếu chạy qua nguồn dự phòng (đã verify dữ liệu khớp chính xác với nguồn chính) — đây là giới hạn hạ tầng thực tế, KHÔNG cố gắng "qua mặt" chặn IP (đổi User-Agent, dùng proxy...) — không phù hợp về mặt đạo đức/ToS cho một bài dự thi.
 
 **Bảo mật & vận hành**:
-- Endpoint yêu cầu header `Authorization: Bearer <CRON_SECRET>`, secret lưu ở Secret Manager (`cron-secret`), gắn vào Cloud Run qua `--set-secrets`, KHÔNG lưu plain env var.
+- Endpoint chấp nhận 2 cách xác thực qua header `Authorization: Bearer <token>`: `CRON_SECRET` (Secret Manager, secret `cron-secret`) cho Cloud Scheduler, HOẶC Firebase ID token của admin cho nút "Chạy Đồng Bộ Ngay" ở `/admin` (xem `lib/admin-auth.ts`).
 - Idempotent — so sánh `id` với draw đã có trong DB trước khi insert, gọi lại nhiều lần trong ngày không tạo bản ghi trùng.
-- Kích hoạt bởi Cloud Scheduler job `vietlott-sync-draws-daily` (region `asia-southeast1`), chạy `0 1 * * *` giờ `Asia/Ho_Chi_Minh` — chạy hàng ngày (không cố khớp đúng lịch quay Mega/Power riêng biệt) vì logic idempotent nên chạy thừa không hại gì, đơn giản hơn nhiều so với 2 lịch riêng.
+- Lỗi ở 1 loại vé số (mega645/power655) KHÔNG chặn loại còn lại — mỗi loại được try/catch riêng, lỗi được ghi vào `results[type].error` thay vì abort cả request.
+- Mọi lần chạy (kể cả lỗi một phần) đều được ghi vào collection `cron_logs` qua `saveCronLog`/`getCronLogs` (`lib/db.ts`) — hiển thị trên `/admin`.
+- Kích hoạt tự động bởi Cloud Scheduler job `vietlott-sync-draws-daily` (region `asia-southeast1`), chạy `0 1 * * *` giờ `Asia/Ho_Chi_Minh` — chạy hàng ngày (không cố khớp đúng lịch quay Mega/Power riêng biệt) vì logic idempotent nên chạy thừa không hại gì.
+
+## Trang Admin (`/admin`)
+
+Dashboard nội bộ xem lịch sử đồng bộ (`cron_logs`) + nút chạy đồng bộ thủ công — chỉ 1-2 admin dùng, KHÔNG phải tính năng cho người dùng thường.
+
+- **Route group**: `/admin` cố tình nằm NGOÀI `app/(main)/` (route group chứa `/`, `/suggestions`, `/chat`, `/education` + `Navbar`/`Footer` dùng chung, xem `app/(main)/layout.tsx`). `app/layout.tsx` (root thật) chỉ còn `<html>/<body>` + `AppProviders`, không có Navbar/Footer — lý do: `/admin` không được có link/chrome trỏ qua lại với phần công khai, và Navbar phụ thuộc `usePathname()` nên nếu dùng chung layout sẽ bị hydration mismatch khi `/admin` redirect client-side ra `/`.
+- **Gate 2 lớp**: client (`components/admin/AdminDashboard.tsx`) chỉ quyết định UI — dùng `authLoading` từ `AppProviders` để đợi Firebase xác định xong trạng thái đăng nhập trước khi quyết định redirect (tránh redirect nhầm admin thật do race condition lúc `user` còn `null` tạm thời). Redirect thẳng về `/` nếu chưa đăng nhập hoặc không phải admin — KHÔNG hiện trang "không có quyền" tĩnh. Gate thật (bảo mật thật sự) nằm ở SERVER — mọi API `/api/admin/*` và `/api/cron/sync-draws` đều verify Firebase ID token qua `lib/admin-auth.ts` (`verifyIdToken` + so email với `ADMIN_EMAILS`), không dựa vào việc client có ẩn UI hay không.
+- `ADMIN_EMAILS`: server-only env var, danh sách email phân cách dấu phẩy. KHÔNG dùng `NEXT_PUBLIC_*` (sẽ lộ danh sách admin trong client bundle).
+- `firebase-admin` cần Application Default Credentials để verify ID token: trên Cloud Run tự động dùng service account đã gắn sẵn; ở local dev chạy 1 lần `gcloud auth application-default login` rồi `gcloud auth application-default set-quota-project lotovn-ai` (quota project mặc định có thể trỏ nhầm sang project gcloud khác đang active — đã tự gặp lỗi 403 `identitytoolkit.googleapis.com` vì việc này).
+
+## Firebase Auth — Google Sign-In & account linking
+
+- **Authorized Domains**: domain Cloud Run live (`lotovn-ai-308915299258.asia-southeast1.run.app`) phải nằm trong `authorizedDomains` của Identity Platform config, nếu không Google Sign-In popup lỗi `auth/unauthorized-domain`. Kiểm tra/sửa qua Identity Toolkit Admin API (`identitytoolkit.googleapis.com/admin/v2/projects/{project}/config`, cần header `x-goog-user-project`), không phải setting của riêng Firebase Console mà CLI thường không đụng tới. Nếu đổi domain Cloud Run (custom domain, region khác...), nhớ cập nhật lại danh sách này.
+- **1 tài khoản / 1 email** (`allowDuplicateEmails` không bật) — nếu 1 email đăng ký Email/Password rồi sau đó "Đăng nhập Google" cùng email, Firebase từ chối bằng `auth/account-exists-with-different-credential` thay vì tự gộp. `lib/firebase.ts` bắt lỗi này (`GoogleAccountLinkRequiredError`), `AuthModal.tsx` tự động chuyển sang form đăng nhập mật khẩu kèm hướng dẫn, rồi gọi `linkPendingGoogleCredential` sau khi đăng nhập thành công để liên kết 2 phương thức vào cùng 1 tài khoản. Chiều ngược lại (đăng ký Email/Password khi email đã tồn tại qua Google) chỉ có thông báo hướng dẫn (`auth/email-already-in-use`), CHƯA có auto-link ngược — nếu cần, phải thêm luồng "đặt mật khẩu cho tài khoản Google" riêng.
+
+## MongoDB — 1 collection dùng chung cho Mega/Power, không tách
+
+`draws`/`suggestions` lưu chung cho cả `mega645` và `power655`, phân biệt bằng field `lotteryType` — đây là thiết kế đúng chuẩn MongoDB (schema giống hệt nhau, dữ liệu nhỏ), KHÔNG tách thành 2 collection riêng (sẽ phải nhân đôi logic query mà không lợi gì ở quy mô này). Đã có compound index `{lotteryType: 1, drawDate: -1}` (draws), `{lotteryType: 1, createdAt: -1}` (suggestions), `{runAt: -1}` (cron_logs) — tạo qua `ensureIndexes()` trong `lib/db.ts`, gọi mỗi lần connect mới (idempotent, `createIndex` tự no-op nếu đã tồn tại).
 
 ## Lỗi đã biết — đừng tái tạo lại
 

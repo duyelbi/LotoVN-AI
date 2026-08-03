@@ -1,11 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import {
   loginWithGoogle,
   loginWithEmail,
   registerWithEmail,
+  linkPendingGoogleCredential,
+  GoogleAccountLinkRequiredError,
   isFirebaseConfigured,
+  AuthCredential,
 } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Shield, Lock, Mail, AlertCircle, Sparkles } from 'lucide-react';
+import { Shield, Lock, Mail, AlertCircle, Sparkles, Link2 } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -33,6 +37,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [linkNotice, setLinkNotice] = useState<string | null>(null);
+  const [pendingGoogleCredential, setPendingGoogleCredential] = useState<AuthCredential | null>(null);
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,12 +50,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       } else {
         await loginWithEmail(email, password);
       }
+      if (pendingGoogleCredential) {
+        await linkPendingGoogleCredential(pendingGoogleCredential);
+        setPendingGoogleCredential(null);
+        toast.success('Đã liên kết tài khoản Google — lần sau có thể đăng nhập bằng cả 2 cách.');
+      }
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(
-        err.message || 'Không thể đăng nhập. Vui lòng kiểm tra email/mật khẩu hoặc định cấu hình Firebase.'
-      );
+      if (err.code === 'auth/email-already-in-use') {
+        setError('Email này đã được đăng ký — có thể bạn đã từng đăng nhập bằng Google. Thử "Tiếp tục với Google" ở trên.');
+      } else {
+        setError(
+          err.message || 'Không thể đăng nhập. Vui lòng kiểm tra email/mật khẩu hoặc định cấu hình Firebase.'
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -57,13 +72,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   const handleGoogleLogin = async () => {
     setError(null);
+    setLinkNotice(null);
     setLoading(true);
     try {
       await loginWithGoogle();
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Đăng nhập Google thất bại.');
+      if (err instanceof GoogleAccountLinkRequiredError) {
+        setEmail(err.email);
+        setIsRegistering(false);
+        setPendingGoogleCredential(err.pendingCredential);
+        setLinkNotice(
+          `Email ${err.email} đã đăng ký bằng mật khẩu. Đăng nhập bằng mật khẩu bên dưới để tự động liên kết tài khoản Google.`
+        );
+      } else {
+        setError(err.message || 'Đăng nhập Google thất bại.');
+      }
     } finally {
       setLoading(false);
     }
@@ -103,6 +128,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               <div>
                 <strong>Chế độ Không Cần Đăng Nhập:</strong> Firebase API Key chưa được cài đặt trong biến môi trường. Bạn vẫn có thể trải nghiệm toàn bộ tính năng và dữ liệu ngay lập tức!
               </div>
+            </div>
+          )}
+
+          {linkNotice && (
+            <div className="bg-teal-500/10 border border-teal-500/30 rounded-xl p-3 flex items-start gap-2.5 text-xs text-teal-300">
+              <Link2 className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>{linkNotice}</div>
             </div>
           )}
 

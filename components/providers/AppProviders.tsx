@@ -13,6 +13,7 @@ const DynamicAuthModal = dynamic(
 
 interface AppStateContextType {
   user: User | null;
+  authLoading: boolean;
   favoriteNumbers: number[];
   toggleFavorite: (num: number, lotteryType: LotteryType) => void;
   isAuthModalOpen: boolean;
@@ -32,6 +33,7 @@ const AppStateContext = createContext<AppStateContextType | undefined>(undefined
  */
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [activeLotteryType, setActiveLotteryType] = useState<LotteryType>('mega645');
 
@@ -48,9 +50,13 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
 
   // Subscribe to Firebase auth changes
   useEffect(() => {
-    if (!auth) return;
+    if (!auth) {
+      setAuthLoading(false);
+      return;
+    }
     const unsubscribe = onAuthStateChanged(auth, (current) => {
       setUser(current);
+      setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -90,6 +96,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     <AppStateContext.Provider
       value={{
         user,
+        authLoading,
         favoriteNumbers,
         toggleFavorite,
         isAuthModalOpen,

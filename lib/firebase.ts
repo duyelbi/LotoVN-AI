@@ -9,6 +9,8 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  linkWithCredential,
+  AuthCredential,
   User,
 } from 'firebase/auth';
 
@@ -33,13 +35,50 @@ const app = isFirebaseConfigured
 
 export const auth = app ? getAuth(app) : null;
 
+/**
+ * Firebase project này bật "1 tài khoản / 1 email" (không `allowDuplicateEmails`) — nếu
+ * 1 email đã đăng ký bằng Email/Password rồi thử "Đăng nhập Google" với cùng email, Firebase
+ * từ chối thẳng bằng lỗi `auth/account-exists-with-different-credential` thay vì tự gộp.
+ * Ném lỗi này ra để `AuthModal` hướng dẫn người dùng đăng nhập lại bằng mật khẩu rồi tự
+ * động liên kết Google vào tài khoản đó (xem `linkPendingGoogleCredential`).
+ */
+export class GoogleAccountLinkRequiredError extends Error {
+  email: string;
+  pendingCredential: AuthCredential;
+  constructor(email: string, pendingCredential: AuthCredential) {
+    super(`Email ${email} đã đăng ký bằng phương thức khác.`);
+    this.name = 'GoogleAccountLinkRequiredError';
+    this.email = email;
+    this.pendingCredential = pendingCredential;
+  }
+}
+
 export async function loginWithGoogle(): Promise<User | null> {
   if (!auth) {
     throw new Error('Firebase chưa được định cấu hình. Vui lòng kiểm tra file biến môi trường (API Key, Project ID).');
   }
   const provider = new GoogleAuthProvider();
-  const res = await signInWithPopup(auth, provider);
-  return res.user;
+  try {
+    const res = await signInWithPopup(auth, provider);
+    return res.user;
+  } catch (err: any) {
+    if (err?.code === 'auth/account-exists-with-different-credential') {
+      const email: string | undefined = err.customData?.email;
+      const pendingCredential = GoogleAuthProvider.credentialFromError(err);
+      if (email && pendingCredential) {
+        throw new GoogleAccountLinkRequiredError(email, pendingCredential);
+      }
+    }
+    throw err;
+  }
+}
+
+/** Liên kết credential Google đang chờ (từ `GoogleAccountLinkRequiredError`) vào user vừa đăng nhập bằng email/mật khẩu — sau đó có thể đăng nhập bằng cả 2 cách. */
+export async function linkPendingGoogleCredential(pendingCredential: AuthCredential): Promise<void> {
+  if (!auth?.currentUser) {
+    throw new Error('Cần đăng nhập trước khi liên kết tài khoản Google.');
+  }
+  await linkWithCredential(auth.currentUser, pendingCredential);
 }
 
 export async function loginWithEmail(email: string, pass: string): Promise<User | null> {
@@ -64,4 +103,4 @@ export async function logOut(): Promise<void> {
 }
 
 export { onAuthStateChanged };
-export type { User };
+export type { User, AuthCredential };

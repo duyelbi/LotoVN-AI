@@ -9,6 +9,7 @@ import {
   EvenOddStat,
   HighLowStat,
   TrendDataPoint,
+  CronLogRecord,
 } from './types';
 import {
   SEED_DRAWS_MEGA645,
@@ -25,12 +26,28 @@ import {
 let memoryDrawsMega: DrawRecord[] = [...SEED_DRAWS_MEGA645];
 let memoryDrawsPower: DrawRecord[] = [...SEED_DRAWS_POWER655];
 let memorySuggestions: SuggestionRecord[] = [...SEED_SUGGESTION_LOGS];
+let memoryCronLogs: CronLogRecord[] = [];
 
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
 let connectPromise: Promise<Db | null> | null = null;
 let lastFailedTime = 0;
 const RETRY_COOLDOWN_MS = 60000; // 60s cooldown on connection failures
+
+// `createIndex` là no-op nếu index đã tồn tại đúng spec — gọi mỗi lần connect mới an toàn.
+// Không tách collection riêng cho mega645/power655 (schema giống hệt nhau, dữ liệu nhỏ) —
+// compound index theo lotteryType là đủ để query nhanh mà không phải nhân đôi logic.
+async function ensureIndexes(db: Db): Promise<void> {
+  try {
+    await Promise.all([
+      db.collection('draws').createIndex({ lotteryType: 1, drawDate: -1 }),
+      db.collection('suggestions').createIndex({ lotteryType: 1, createdAt: -1 }),
+      db.collection('cron_logs').createIndex({ runAt: -1 }),
+    ]);
+  } catch (err) {
+    console.warn('Failed ensuring MongoDB indexes:', err);
+  }
+}
 
 async function getMongoDb(): Promise<Db | null> {
   const uri = process.env.MONGODB_URI;
@@ -59,6 +76,7 @@ async function getMongoDb(): Promise<Db | null> {
       });
       await cachedClient.connect();
       cachedDb = cachedClient.db('lotovn_ai');
+      await ensureIndexes(cachedDb);
       return cachedDb;
     } catch (err) {
       console.warn('MongoDB connection failed, falling back to local seed data:', err);
@@ -212,6 +230,57 @@ export async function saveSuggestionLog(suggestion: SuggestionRecord): Promise<S
   memorySuggestions.unshift(suggestion);
   return suggestion;
 }
+
+// ----------------------------------------------------
+// CRON LOGS (lịch sử các lần chạy đồng bộ kỳ quay — xem app/admin)
+// ----------------------------------------------------
+export async function saveCronLog(log: Omit<CronLogRecord, 'id'>): Promise<CronLogRecord> {
+  const record: CronLogRecord = {
+    ...log,
+    id: `cron-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  };
+
+  const db = await getMongoDb();
+  if (db) {
+    try {
+      await db.collection<CronLogRecord>('cron_logs').insertOne(record);
+    } catch (error) {
+      console.warn('Failed inserting cron log into MongoDB:', error);
+    }
+  }
+
+  memoryCronLogs.unshift(record);
+  memoryCronLogs = memoryCronLogs.slice(0, 100);
+  return record;
+}
+
+export const getCronLogs = cache(async (limit = 20): Promise<CronLogRecord[]> => {
+  const db = await getMongoDb();
+  if (db) {
+    try {
+      const docs = await db
+        .collection<CronLogRecord>('cron_logs')
+        .find({})
+        .sort({ runAt: -1 })
+        .limit(limit)
+        .toArray();
+      if (docs && docs.length > 0) {
+        return docs.map((doc) => ({
+          id: doc.id,
+          runAt: doc.runAt,
+          triggeredBy: doc.triggeredBy,
+          triggeredByEmail: doc.triggeredByEmail,
+          results: doc.results,
+          success: doc.success,
+        }));
+      }
+    } catch (error) {
+      console.warn('MongoDB cron_logs query error:', error);
+    }
+  }
+
+  return memoryCronLogs.slice(0, limit);
+});
 
 export async function evaluatePendingSuggestions(newDraw: DrawRecord) {
   const winSet = new Set(newDraw.numbers);

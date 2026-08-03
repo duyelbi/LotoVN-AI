@@ -128,6 +128,22 @@ export interface ChatMessage {
   };
 }
 
+export interface CronLogResult {
+  inserted: string[];
+  skipped: string[];
+  source?: 'official' | 'community';
+  error?: string;
+}
+
+export interface CronLogRecord {
+  id: string;
+  runAt: string; // ISO timestamp
+  triggeredBy: 'scheduler' | 'admin';
+  triggeredByEmail?: string; // chỉ có khi triggeredBy === 'admin'
+  results: Record<LotteryType, CronLogResult>;
+  success: boolean; // false nếu bất kỳ lotteryType nào có error
+}
+
 export interface UserProfile {
   uid: string;
   email: string | null;
