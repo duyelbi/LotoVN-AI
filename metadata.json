@@ -1,0 +1,6 @@
+{
+  "name": "LotoVN AI",
+  "description": "Ứng dụng minh bạch dữ liệu, thống kê lịch sử và giáo dục xác suất xổ số Vietlott (Mega 6/45 & Power 6/55) với trợ lý AI học thuật.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
