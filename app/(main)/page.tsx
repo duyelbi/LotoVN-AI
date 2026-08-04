@@ -9,9 +9,20 @@ import { NumberMatrix } from '@/components/dashboard/NumberMatrix';
 import { DrawHistoryTable } from '@/components/dashboard/DrawHistoryTable';
 
 export const metadata: Metadata = {
-  title: 'Thống Kê & Tần Suất Vietlott | LotoVN AI',
+  title: 'Thống Kê & Tần Suất Vietlott',
   description:
     'Bảng tần suất xuất hiện, thống kê số nóng, số gan lâu chưa về, phân bố chẵn/lẻ và cao/thấp cho Vietlott Mega 6/45 và Power 6/55.',
+  openGraph: {
+    title: 'Thống Kê & Tần Suất Vietlott | LotoVN AI',
+    description:
+      'Bảng tần suất xuất hiện, thống kê số nóng, số gan lâu chưa về, phân bố chẵn/lẻ và cao/thấp cho Vietlott Mega 6/45 và Power 6/55.',
+    url: '/',
+  },
+  twitter: {
+    title: 'Thống Kê & Tần Suất Vietlott | LotoVN AI',
+    description:
+      'Bảng tần suất xuất hiện, thống kê số nóng, số gan lâu chưa về, phân bố chẵn/lẻ và cao/thấp cho Vietlott Mega 6/45 và Power 6/55.',
+  },
 };
 
 interface PageProps {

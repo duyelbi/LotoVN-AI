@@ -6,9 +6,20 @@ import { AccuracyDashboard } from '@/components/suggestions/AccuracyDashboard';
 import { SuggestionLogList } from '@/components/suggestions/SuggestionLogList';
 
 export const metadata: Metadata = {
-  title: 'Bộ Gợi Ý & Kiểm Chứng Độ Chính Xác | LotoVN AI',
+  title: 'Bộ Gợi Ý & Kiểm Chứng Độ Chính Xác',
   description:
     'Tạo bộ số gợi ý cân bằng thuật toán và theo dõi tỷ lệ trúng thực tế đối soát tự động khi có kết quả mới.',
+  openGraph: {
+    title: 'Bộ Gợi Ý & Kiểm Chứng Độ Chính Xác | LotoVN AI',
+    description:
+      'Tạo bộ số gợi ý cân bằng thuật toán và theo dõi tỷ lệ trúng thực tế đối soát tự động khi có kết quả mới.',
+    url: '/suggestions',
+  },
+  twitter: {
+    title: 'Bộ Gợi Ý & Kiểm Chứng Độ Chính Xác | LotoVN AI',
+    description:
+      'Tạo bộ số gợi ý cân bằng thuật toán và theo dõi tỷ lệ trúng thực tế đối soát tự động khi có kết quả mới.',
+  },
 };
 
 interface PageProps {

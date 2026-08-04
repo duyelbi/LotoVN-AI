@@ -93,9 +93,11 @@ export const Navbar: React.FC = () => {
           <div className="flex flex-wrap items-center justify-between py-2.5 sm:py-0 sm:h-16 gap-3">
             {/* Logo & Brand */}
             <Link href={buildLinkWithLottery('/')} className="flex items-center gap-3 group">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-indigo-600 flex items-center justify-center text-slate-950 font-black text-lg shadow-md shadow-teal-500/20 shrink-0">
-                VN
-              </div>
+              <img
+                src="/logo.png"
+                alt="LotoVN AI"
+                className="w-9 h-9 rounded-xl shadow-md shadow-teal-500/20 shrink-0 object-cover group-hover:scale-105 transition-transform"
+              />
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-slate-100 text-lg tracking-tight group-hover:text-teal-300 transition-colors">

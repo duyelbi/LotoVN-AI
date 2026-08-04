@@ -9,9 +9,11 @@ export const Footer: React.FC = () => {
         <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
           <div className="space-y-1.5">
             <div className="flex items-center justify-center md:justify-start gap-2">
-              <div className="w-6 h-6 rounded-lg bg-teal-500/20 text-teal-400 font-black flex items-center justify-center text-xs">
-                VN
-              </div>
+              <img
+                src="/logo.png"
+                alt="LotoVN AI"
+                className="w-6 h-6 rounded-lg shrink-0 object-cover"
+              />
               <span className="font-bold text-slate-200 text-sm">
                 LotoVN <span className="text-teal-400">AI</span>
               </span>

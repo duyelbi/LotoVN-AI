@@ -6,6 +6,7 @@ import {
   setPersistence,
   browserLocalPersistence,
   GoogleAuthProvider,
+  signInWithCredential,
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
@@ -26,6 +27,10 @@ const firebaseConfig = {
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '',
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '',
 };
+
+export const GOOGLE_CLIENT_ID =
+  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+  '308915299258-ujkjfst5hknnh0g13ies9cu59cdl2pc0.apps.googleusercontent.com';
 
 export const isFirebaseConfigured = Boolean(
   firebaseConfig.apiKey && firebaseConfig.apiKey.length > 5 && firebaseConfig.projectId
@@ -66,6 +71,37 @@ export class GoogleAccountLinkRequiredError extends Error {
     this.name = 'GoogleAccountLinkRequiredError';
     this.email = email;
     this.pendingCredential = pendingCredential;
+  }
+}
+
+/**
+ * Đăng nhập Google bằng Google Identity Services ID Token (One Tap / GIS Button).
+ * Không mở tab mới, không mở popup, xác thực tức thì trong màn hình hiện tại.
+ */
+export async function loginWithGoogleCredential(idToken: string): Promise<User | null> {
+  if (!auth) {
+    throw new Error('Firebase chưa được định cấu hình.');
+  }
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+  } catch (e) {
+    console.warn('LotoVN AI: setPersistence warning', e);
+  }
+
+  try {
+    const credential = GoogleAuthProvider.credential(idToken);
+    const res = await signInWithCredential(auth, credential);
+    return res.user;
+  } catch (err: any) {
+    console.error('LotoVN AI: loginWithGoogleCredential error ->', err);
+    if (err?.code === 'auth/account-exists-with-different-credential') {
+      const email: string | undefined = err.customData?.email;
+      const pendingCredential = GoogleAuthProvider.credential(idToken);
+      if (email) {
+        throw new GoogleAccountLinkRequiredError(email, pendingCredential);
+      }
+    }
+    throw err;
   }
 }
 

@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   loginWithGoogle,
-  loginWithGoogleRedirect,
+  loginWithGoogleCredential,
+  GOOGLE_CLIENT_ID,
   loginWithEmail,
   registerWithEmail,
   linkPendingGoogleCredential,
@@ -35,6 +36,7 @@ interface AuthModalProps {
 
 /**
  * Modal đăng nhập/đăng ký tuỳ chọn (Firebase Email/Password + Google).
+ * Tích hợp Google Identity Services (GIS): đăng nhập trực tiếp không cần mở tab mới hay popup.
  * Nếu tài khoản là Admin (`ADMIN_EMAILS`), tự động điều hướng tới `/admin`.
  */
 export const AuthModal: React.FC<AuthModalProps> = ({
