@@ -5,7 +5,7 @@ import { Toaster, toast } from 'sonner';
 import { LotteryType } from '@/lib/types';
 import {
   auth,
-  onAuthStateChanged,
+  onIdTokenChanged,
   logOut,
   consumeGoogleRedirectResult,
   GoogleAccountLinkRequiredError,
@@ -57,20 +57,31 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     }
   });
 
-  // Subscribe to Firebase auth changes & sync __session cookie for Next.js Middleware
+  // onIdTokenChanged fires on login/logout AND every token refresh (~1h),
+  // so the `__session` cookie stays a valid, signed ID token for server verify.
   useEffect(() => {
     if (!auth) {
       console.warn('LotoVN AI: Firebase Auth chưa khởi tạo (kiểm tra NEXT_PUBLIC_FIREBASE_* trong .env.local).');
       setAuthLoading(false);
       return;
     }
-    const unsubscribe = onAuthStateChanged(auth, async (current) => {
+
+    const writeSessionCookie = (idToken: string | null) => {
+      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      if (idToken) {
+        document.cookie = `__session=${idToken}; path=/; max-age=3600; SameSite=Lax${secure}`;
+      } else {
+        document.cookie = `__session=; path=/; max-age=0; SameSite=Lax${secure}`;
+      }
+    };
+
+    const unsubscribe = onIdTokenChanged(auth, async (current) => {
       console.log('LotoVN AI: Firebase Auth State Changed ->', current?.email || 'Chưa đăng nhập');
       setUser(current);
       if (current) {
         try {
           const idToken = await current.getIdToken();
-          document.cookie = `__session=${idToken}; path=/; max-age=3600; SameSite=Lax`;
+          writeSessionCookie(idToken);
           const res = await fetch('/api/admin/check', {
             headers: { Authorization: `Bearer ${idToken}` },
           });
@@ -81,7 +92,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
           setIsAdmin(false);
         }
       } else {
-        document.cookie = '__session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+        writeSessionCookie(null);
         setIsAdmin(false);
       }
       setAuthLoading(false);
@@ -141,7 +152,8 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
 
   const handleLogout = useCallback(async () => {
     await logOut();
-    document.cookie = '__session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    const secure = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `__session=; path=/; max-age=0; SameSite=Lax${secure}`;
     setUser(null);
     setIsAdmin(false);
   }, []);

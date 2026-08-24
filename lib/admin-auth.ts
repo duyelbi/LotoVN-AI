@@ -27,14 +27,11 @@ interface AdminCheckResult {
 }
 
 /**
- * Verify Firebase ID token từ header `Authorization: Bearer <idToken>` và kiểm tra
- * email có nằm trong `ADMIN_EMAILS` (server-only env var, không phải NEXT_PUBLIC_*)
- * hay không. Đây là ranh giới bảo mật thật — mọi route admin PHẢI gọi hàm này,
- * không được chỉ dựa vào việc client có ẩn/hiện UI hay không.
+ * Verify Firebase ID token (header `Authorization: Bearer` hoặc cookie `__session`)
+ * và kiểm tra email có nằm trong `ADMIN_EMAILS`. Đây là ranh giới bảo mật thật —
+ * Edge `proxy.ts` chỉ decode JWT để chặn sớm UI, không verify chữ ký.
  */
-export async function verifyAdminRequest(req: Request): Promise<AdminCheckResult> {
-  const authHeader = req.headers.get('authorization');
-  const idToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+export async function verifyAdminIdToken(idToken: string | null | undefined): Promise<AdminCheckResult> {
   if (!idToken || ADMIN_EMAILS.length === 0) {
     return { isAdmin: false };
   }
@@ -44,7 +41,13 @@ export async function verifyAdminRequest(req: Request): Promise<AdminCheckResult
     const email = decoded.email?.toLowerCase();
     return { isAdmin: Boolean(email && ADMIN_EMAILS.includes(email)), email };
   } catch (error) {
-    console.warn('verifyAdminRequest: invalid ID token', error);
+    console.warn('verifyAdminIdToken: invalid ID token', error);
     return { isAdmin: false };
   }
+}
+
+export async function verifyAdminRequest(req: Request): Promise<AdminCheckResult> {
+  const authHeader = req.headers.get('authorization');
+  const idToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  return verifyAdminIdToken(idToken);
 }

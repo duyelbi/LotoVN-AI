@@ -25,9 +25,9 @@ function decodeJwtPayload(token: string): { email?: string; exp?: number } | nul
 }
 
 /**
- * Next.js Middleware tập trung — Đánh chặn mọi request vào nhóm route được bảo vệ (`/admin/:path*`).
- * Thực hiện xác thực phiên đăng nhập (Cookie `__session`) và kiểm tra quyền Admin ngay tại tầng Edge.
- * Nếu không hợp lệ hoặc không có quyền Admin, tự động redirect về `/` ngay cấp độ HTTP trước khi render bất kỳ page nào.
+ * Edge pre-check cho `/admin`: decode JWT `__session` (không verify chữ ký — Edge
+ * không chạy firebase-admin). Gate thật: `app/admin/layout.tsx` + `verifyAdminIdToken`,
+ * và mọi API admin đều gọi `verifyAdminRequest`.
  */
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

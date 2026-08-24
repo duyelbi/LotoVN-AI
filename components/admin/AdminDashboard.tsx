@@ -159,10 +159,13 @@ export function AdminDashboard() {
   }, [user, router]);
 
   useEffect(() => {
-    if (user) {
-      loadLogs();
+    if (authLoading) return;
+    if (!user || !isAdmin) {
+      router.replace('/');
+      return;
     }
-  }, [user, loadLogs]);
+    loadLogs();
+  }, [authLoading, user, isAdmin, loadLogs, router]);
 
   const loadDraws = useCallback(async () => {
     if (!user) return;
@@ -189,10 +192,10 @@ export function AdminDashboard() {
   }, [user, filterType, filterLimit, filterSyncStatus, currentPage]);
 
   useEffect(() => {
-    if (user) {
+    if (!authLoading && user && isAdmin) {
       loadDraws();
     }
-  }, [user, loadDraws]);
+  }, [authLoading, user, isAdmin, loadDraws]);
 
   const handleRunSync = async () => {
     if (!user) return;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDraws, addDraw, saveCronLog, getMongoDb } from '@/lib/db';
+import { addDraw, saveCronLog, getRecentDrawSourceKeys } from '@/lib/db';
 import { fetchLatestDrawsFromSource } from '@/lib/vietlott-source';
 import { verifyAdminRequest } from '@/lib/admin-auth';
 import { CronLogResult, LotteryType } from '@/lib/types';
@@ -45,8 +45,6 @@ export async function GET(req: NextRequest) {
 
   for (const lotteryType of LOTTERY_TYPES) {
     try {
-      const db = await getMongoDb();
-      
       if (isFullSync) {
         // --- CHẾ ĐỘ FULL SYNC ---
         const { fetchFromCommunitySource, fetchAllFromOfficialSource } = await import('@/lib/vietlott-source');
@@ -74,8 +72,7 @@ export async function GET(req: NextRequest) {
         results[lotteryType].inserted = [`Quét ${allDraws.length} kỳ quay: Thêm mới ${bulkResult.upsertedCount}, Cập nhật ${bulkResult.modifiedCount} (Nguồn: ${actualSource})`];
       } else {
         // --- CHẾ ĐỘ CRON HẰNG NGÀY (MẶC ĐỊNH) ---
-        const rawDraws = await db.collection('draws').find({ lotteryType }).sort({ drawDate: -1 }).limit(20).toArray();
-        const existingSet = new Set(rawDraws.map((d) => `${d.id}-${d.source}`));
+        const existingSet = await getRecentDrawSourceKeys(lotteryType, 20);
 
         const { draws: latestFromSource, source } = await fetchLatestDrawsFromSource(lotteryType, 3);
         results[lotteryType].source = source;

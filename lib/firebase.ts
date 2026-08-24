@@ -14,6 +14,7 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  onIdTokenChanged,
   linkWithCredential,
   AuthCredential,
   User,
@@ -216,5 +217,5 @@ export async function logOut(): Promise<void> {
   await firebaseSignOut(auth);
 }
 
-export { onAuthStateChanged };
+export { onAuthStateChanged, onIdTokenChanged };
 export type { User, AuthCredential };

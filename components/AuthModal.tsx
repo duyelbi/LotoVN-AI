@@ -67,6 +67,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const checkAdminAndRedirect = async (loggedUser: User) => {
     try {
       const idToken = await loggedUser.getIdToken();
+      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `__session=${idToken}; path=/; max-age=3600; SameSite=Lax${secure}`;
       const res = await fetch('/api/admin/check', {
         headers: { Authorization: `Bearer ${idToken}` },
       });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDraws, addDraw } from '@/lib/db';
+import { verifyAdminRequest } from '@/lib/admin-auth';
 import { LotteryType } from '@/lib/types';
 
 export async function GET(req: NextRequest) {
@@ -23,6 +24,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const { isAdmin } = await verifyAdminRequest(req);
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json();
     const {
       id,

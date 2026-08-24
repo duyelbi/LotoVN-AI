@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/admin-auth';
-import { LotteryType, DrawRecord } from '@/lib/types';
-import { addDrawsBulk, getMongoDb } from '@/lib/db';
+import { LotteryType } from '@/lib/types';
+import { addDrawsBulk, getDrawSources } from '@/lib/db';
 import { fetchFromOfficialSource, fetchFromCommunitySource } from '@/lib/vietlott-source';
 
 export async function POST(req: NextRequest) {
@@ -21,12 +21,7 @@ export async function POST(req: NextRequest) {
     const lotteryType = type as LotteryType;
 
     // Check which sources already exist in DB
-    const db = await getMongoDb();
-    const existingDocs = await db.collection<DrawRecord>('draws')
-      .find({ id, lotteryType })
-      .project({ source: 1 })
-      .toArray();
-    const existingSources = new Set(existingDocs.map(d => d.source));
+    const existingSources = await getDrawSources(id, lotteryType);
 
     const drawsToInsert: any[] = [];
     type SourceStatus = 'exists' | 'found' | 'not_found' | 'error';
