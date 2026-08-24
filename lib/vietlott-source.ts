@@ -33,7 +33,7 @@ const OFFICIAL_ENDPOINTS: Record<LotteryType, AjaxProEndpointConfig> = {
   },
 };
 
-function buildAjaxProBody(config: AjaxProEndpointConfig) {
+function buildAjaxProBody(config: AjaxProEndpointConfig, pageIndex: number = 0) {
   return {
     ORenderInfo: {
       ExtraParam1: '',
@@ -57,7 +57,7 @@ function buildAjaxProBody(config: AjaxProEndpointConfig) {
     GameDrawId: '',
     ArrayNumbers: Array.from({ length: config.arrayRows }, () => Array(18).fill('')),
     CheckMulti: false,
-    PageIndex: 0,
+    PageIndex: pageIndex,
   };
 }
 
@@ -109,9 +109,10 @@ function parseOfficialHtml(
   return draws;
 }
 
-async function fetchFromOfficialSource(
+export async function fetchFromOfficialSource(
   lotteryType: LotteryType,
-  limit: number
+  limit: number,
+  pageIndex: number = 0
 ): Promise<Omit<DrawRecord, 'createdAt'>[]> {
   const config = OFFICIAL_ENDPOINTS[lotteryType];
 
@@ -127,7 +128,7 @@ async function fetchFromOfficialSource(
       Origin: 'https://vietlott.vn',
       Referer: config.referer,
     },
-    body: JSON.stringify(buildAjaxProBody(config)),
+    body: JSON.stringify(buildAjaxProBody(config, pageIndex)),
     cache: 'no-store',
   });
 
@@ -138,14 +139,36 @@ async function fetchFromOfficialSource(
   const json = await res.json();
   const html = json?.value?.HtmlContent;
   if (typeof html !== 'string' || html.length === 0) {
-    throw new Error('Vietlott official endpoint: missing HtmlContent trong response');
+    if (pageIndex === 0) throw new Error('Vietlott official endpoint: missing HtmlContent trong response');
+    return [];
   }
 
   const draws = parseOfficialHtml(html, lotteryType, limit);
-  if (draws.length === 0) {
+  if (draws.length === 0 && pageIndex === 0) {
     throw new Error('Vietlott official endpoint: không parse được dòng kết quả nào (có thể HTML đã đổi cấu trúc)');
   }
   return draws;
+}
+
+export async function fetchAllFromOfficialSource(
+  lotteryType: LotteryType
+): Promise<Omit<DrawRecord, 'createdAt'>[]> {
+  const allDraws: Omit<DrawRecord, 'createdAt'>[] = [];
+  let pageIndex = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    console.log(`[vietlott-source] Fetching official page ${pageIndex} for ${lotteryType}...`);
+    const pageDraws = await fetchFromOfficialSource(lotteryType, 100, pageIndex);
+    if (pageDraws.length === 0) {
+      hasMore = false;
+    } else {
+      allDraws.push(...pageDraws);
+      pageIndex++;
+    }
+  }
+  
+  return allDraws;
 }
 
 // ============================================================
@@ -164,7 +187,7 @@ interface CommunitySourceRecord {
   process_time: string;
 }
 
-async function fetchFromCommunitySource(
+export async function fetchFromCommunitySource(
   lotteryType: LotteryType,
   limit: number
 ): Promise<Omit<DrawRecord, 'createdAt'>[]> {
@@ -175,7 +198,7 @@ async function fetchFromCommunitySource(
 
   const text = await res.text();
   const lines = text.trim().split('\n').filter(Boolean);
-  const latestLines = lines.slice(-limit).reverse(); // file lưu cũ->mới, đảo lại cho khớp thứ tự nguồn chính
+  const latestLines = limit > 0 ? lines.slice(-limit).reverse() : lines.reverse(); // limit 0 = lấy hết
 
   return latestLines.map((line) => {
     const record: CommunitySourceRecord = JSON.parse(line);

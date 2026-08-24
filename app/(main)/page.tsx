@@ -39,7 +39,7 @@ export default async function DashboardPage(props: PageProps) {
   const selectedLottery: LotteryType = rawType === 'power655' ? 'power655' : 'mega645';
 
   const rawRange = searchParams?.range;
-  const parsedRange = rawRange ? parseInt(rawRange, 10) : DEFAULT_TIME_RANGE;
+  const parsedRange = rawRange === 'all' ? 'all' : (rawRange ? parseInt(rawRange, 10) : DEFAULT_TIME_RANGE);
   const range: TimeRange = TIME_RANGE_OPTIONS.includes(parsedRange as TimeRange)
     ? (parsedRange as TimeRange)
     : DEFAULT_TIME_RANGE;
@@ -48,6 +48,8 @@ export default async function DashboardPage(props: PageProps) {
     <div className="space-y-8 pb-12">
       <DashboardControls selectedLottery={selectedLottery} range={range} />
       <KpiCards lotteryType={selectedLottery} range={range} />
+      
+      <DrawHistoryTable lotteryType={selectedLottery} range={range} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <FrequencyChart lotteryType={selectedLottery} range={range} />
@@ -55,7 +57,6 @@ export default async function DashboardPage(props: PageProps) {
       </div>
 
       <NumberMatrix lotteryType={selectedLottery} range={range} />
-      <DrawHistoryTable lotteryType={selectedLottery} range={range} />
     </div>
   );
 }

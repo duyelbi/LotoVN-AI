@@ -9,6 +9,9 @@ export enum TimeRange {
   Last10 = 10,
   Last30 = 30,
   Last50 = 50,
+  Last100 = 100,
+  Last200 = 200,
+  All = 'all',
 }
 
 /** Danh sách TimeRange hợp lệ, dùng để validate query param và render các nút chọn. */
@@ -16,6 +19,9 @@ export const TIME_RANGE_OPTIONS: TimeRange[] = [
   TimeRange.Last10,
   TimeRange.Last30,
   TimeRange.Last50,
+  TimeRange.Last100,
+  TimeRange.Last200,
+  TimeRange.All,
 ];
 
 export const DEFAULT_TIME_RANGE = TimeRange.Last30;
@@ -47,6 +53,16 @@ export interface DrawRecord {
   jackpotValue: number; // in VND (e.g. 45000000000)
   hasWinner: boolean;
   createdAt: string;
+  source?: 'official' | 'community';
+  syncedAt?: string;
+}
+
+export interface AdminGroupedDraw {
+  id: string;
+  lotteryType: LotteryType;
+  drawDate: string;
+  official?: DrawRecord;
+  community?: DrawRecord;
 }
 
 export interface NumberStat {

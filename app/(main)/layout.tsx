@@ -4,8 +4,7 @@ import { Footer } from '@/components/Footer';
 
 /**
  * Layout cho nhóm route công khai — `/`, `/suggestions`, `/chat`, `/education` — render
- * Navbar (sticky, cần Suspense vì dùng `useSearchParams`) + Footer. Route group `(main)`
- * không xuất hiện trong URL. `/admin` nằm ngoài group này nên không kế thừa Navbar/Footer.
+ * Navbar (sticky, cần Suspense vì dùng `useSearchParams`) + Footer.
  */
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (

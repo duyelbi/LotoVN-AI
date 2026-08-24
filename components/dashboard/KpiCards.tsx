@@ -65,33 +65,42 @@ async function KpiCardsContent({ lotteryType, range }: KpiCardsProps) {
                 Kết Quả Mới Nhất Dữ Liệu
               </h2>
             </div>
-            <div className="text-left sm:text-right">
-              <span className="text-xs text-slate-400">Ước tính Jackpot:</span>
-              <div className="text-base sm:text-lg font-black text-amber-400">
-                {(latestDraw.jackpotValue / 1000000000).toFixed(1)} Tỷ VNĐ
-              </div>
-            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 bg-slate-950/80 p-4 rounded-xl border border-slate-800/80">
-            {latestDraw.numbers.map((num) => (
-              <NumberBall
-                key={num}
-                number={num}
-                status="default"
-                size="lg"
-              />
-            ))}
-            {latestDraw.bonusNumber && (
-              <div className="flex items-center gap-2 ml-2 pl-3 border-l border-slate-800">
-                <span className="text-xs text-sky-400 font-semibold">Bonus:</span>
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 sm:gap-3">
+            {/* Group 1: First 5 numbers (left aligned on mobile) */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              {latestDraw.numbers.slice(0, 5).map((num) => (
                 <NumberBall
-                  number={latestDraw.bonusNumber}
-                  status="bonus"
+                  key={num}
+                  number={num}
+                  status="default"
                   size="lg"
                 />
-              </div>
-            )}
+              ))}
+            </div>
+            
+            {/* Group 2: Remaining numbers & Bonus (right aligned on mobile) */}
+            <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
+              {latestDraw.numbers.slice(5).map((num) => (
+                <NumberBall
+                  key={num}
+                  number={num}
+                  status="default"
+                  size="lg"
+                />
+              ))}
+              {latestDraw.bonusNumber && (
+                <div className="flex items-center gap-2 ml-1 sm:ml-2 pl-2 sm:pl-3 border-l border-slate-800 shrink-0">
+                  <span className="text-xs text-sky-400 font-semibold">Bonus:</span>
+                  <NumberBall
+                    number={latestDraw.bonusNumber}
+                    status="bonus"
+                    size="lg"
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

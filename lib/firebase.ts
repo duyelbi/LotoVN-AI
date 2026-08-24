@@ -120,6 +120,9 @@ export async function loginWithGoogle(): Promise<User | null> {
   }
 
   const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({
+    prompt: 'select_account'
+  });
   try {
     const res = await signInWithPopup(auth, provider);
     return res.user;
@@ -152,6 +155,9 @@ export async function loginWithGoogleRedirect(): Promise<void> {
     throw new Error('Firebase chưa được định cấu hình.');
   }
   const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({
+    prompt: 'select_account'
+  });
   await signInWithRedirect(auth, provider);
 }
 

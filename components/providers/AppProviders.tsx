@@ -18,6 +18,7 @@ import { AuthModal } from '@/components/AuthModal';
 
 interface AppStateContextType {
   user: User | null;
+  isAdmin: boolean;
   authLoading: boolean;
   favoriteNumbers: number[];
   toggleFavorite: (num: number, lotteryType: LotteryType) => void;
@@ -34,12 +35,12 @@ const AppStateContext = createContext<AppStateContextType | undefined>(undefined
 
 /**
  * Context provider bọc toàn bộ app trong `app/layout.tsx`, giữ state client-only
- * xuyên suốt các route: user Firebase, danh sách số yêu thích (localStorage),
- * trạng thái mở AuthModal, và toast Sonner. Không giữ `selectedLottery`/`activeTab`
- * — 2 cái đó suy ra từ URL (searchParams/pathname) ở nơi cần dùng.
+ * xuyên suốt các route: user Firebase, trạng thái admin (xác minh server-side qua /api/admin/check),
+ * danh sách số yêu thích (localStorage), trạng thái mở AuthModal, và toast Sonner.
  */
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [activeLotteryType, setActiveLotteryType] = useState<LotteryType>('mega645');
@@ -56,16 +57,33 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     }
   });
 
-  // Subscribe to Firebase auth changes
+  // Subscribe to Firebase auth changes & sync __session cookie for Next.js Middleware
   useEffect(() => {
     if (!auth) {
       console.warn('LotoVN AI: Firebase Auth chưa khởi tạo (kiểm tra NEXT_PUBLIC_FIREBASE_* trong .env.local).');
       setAuthLoading(false);
       return;
     }
-    const unsubscribe = onAuthStateChanged(auth, (current) => {
+    const unsubscribe = onAuthStateChanged(auth, async (current) => {
       console.log('LotoVN AI: Firebase Auth State Changed ->', current?.email || 'Chưa đăng nhập');
       setUser(current);
+      if (current) {
+        try {
+          const idToken = await current.getIdToken();
+          document.cookie = `__session=${idToken}; path=/; max-age=3600; SameSite=Lax`;
+          const res = await fetch('/api/admin/check', {
+            headers: { Authorization: `Bearer ${idToken}` },
+          });
+          const json = await res.json();
+          setIsAdmin(Boolean(json.isAdmin));
+        } catch (e) {
+          console.warn('LotoVN AI: Admin check error', e);
+          setIsAdmin(false);
+        }
+      } else {
+        document.cookie = '__session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+        setIsAdmin(false);
+      }
       setAuthLoading(false);
     });
     return () => unsubscribe();
@@ -123,13 +141,16 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
 
   const handleLogout = useCallback(async () => {
     await logOut();
+    document.cookie = '__session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
     setUser(null);
+    setIsAdmin(false);
   }, []);
 
   return (
     <AppStateContext.Provider
       value={{
         user,
+        isAdmin,
         authLoading,
         favoriteNumbers,
         toggleFavorite,

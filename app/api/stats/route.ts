@@ -7,7 +7,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const typeParam = searchParams.get('type') as LotteryType;
     const type: LotteryType = typeParam === 'power655' ? 'power655' : 'mega645';
-    const limit = Number(searchParams.get('limit') || 30);
+    const limitParam = searchParams.get('limit');
+    const limit = limitParam === 'all' ? 'all' : Number(limitParam || 30);
 
     const stats = await getLotteryStats(type, limit);
     return NextResponse.json(stats);

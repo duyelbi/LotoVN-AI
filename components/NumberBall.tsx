@@ -58,13 +58,13 @@ export const NumberBall: React.FC<NumberBallProps> = ({
 
       {showDroughtBadge && drought !== undefined && drought > 0 && (
         <span
-          className={`absolute -bottom-2 px-1.5 py-0.5 text-[10px] font-medium rounded-full border ${
+          className={`absolute -bottom-2 px-1.5 py-0.5 text-[10px] font-medium rounded-full border whitespace-nowrap ${
             drought >= GAN_THRESHOLD
               ? 'bg-amber-950/90 text-amber-300 border-amber-500/50'
               : 'bg-slate-900/90 text-slate-400 border-slate-700'
           }`}
         >
-          {drought}k
+          {drought} kỳ
         </span>
       )}
     </div>

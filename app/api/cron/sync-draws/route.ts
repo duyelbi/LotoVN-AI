@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDraws, addDraw, saveCronLog } from '@/lib/db';
+import { getDraws, addDraw, saveCronLog, getMongoDb } from '@/lib/db';
 import { fetchLatestDrawsFromSource } from '@/lib/vietlott-source';
 import { verifyAdminRequest } from '@/lib/admin-auth';
 import { CronLogResult, LotteryType } from '@/lib/types';
@@ -35,6 +35,9 @@ export async function GET(req: NextRequest) {
     triggeredByEmail = email;
   }
 
+  const isFullSync = req.nextUrl.searchParams.get('full') === 'true';
+  const forceSource = req.nextUrl.searchParams.get('source');
+
   const results: Record<LotteryType, CronLogResult> = {
     mega645: { inserted: [], skipped: [] },
     power655: { inserted: [], skipped: [] },
@@ -42,20 +45,56 @@ export async function GET(req: NextRequest) {
 
   for (const lotteryType of LOTTERY_TYPES) {
     try {
-      const existingDraws = await getDraws(lotteryType, 10);
-      const existingIds = new Set(existingDraws.map((d) => d.id));
-
-      const { draws: latestFromSource, source } = await fetchLatestDrawsFromSource(lotteryType, 3);
-      results[lotteryType].source = source;
-
-      for (const draw of latestFromSource) {
-        if (existingIds.has(draw.id)) {
-          results[lotteryType].skipped.push(draw.id);
-          continue;
+      const db = await getMongoDb();
+      
+      if (isFullSync) {
+        // --- CHẾ ĐỘ FULL SYNC ---
+        const { fetchFromCommunitySource, fetchAllFromOfficialSource } = await import('@/lib/vietlott-source');
+        const { addDrawsBulk } = await import('@/lib/db');
+        
+        let allDraws;
+        let actualSource: 'official' | 'community' = 'community';
+        
+        if (forceSource === 'official') {
+          actualSource = 'official';
+          allDraws = await fetchAllFromOfficialSource(lotteryType);
+        } else {
+          allDraws = await fetchFromCommunitySource(lotteryType, 0); // 0 = lấy hết
         }
-        await addDraw(draw);
-        results[lotteryType].inserted.push(draw.id);
+        
+        // Gắn thêm meta data
+        const drawsToInsert = allDraws.map(draw => ({
+          ...draw,
+          source: actualSource,
+          syncedAt: new Date().toISOString()
+        }));
+        
+        const bulkResult = await addDrawsBulk(drawsToInsert);
+        results[lotteryType].source = actualSource;
+        results[lotteryType].inserted = [`Quét ${allDraws.length} kỳ quay: Thêm mới ${bulkResult.upsertedCount}, Cập nhật ${bulkResult.modifiedCount} (Nguồn: ${actualSource})`];
+      } else {
+        // --- CHẾ ĐỘ CRON HẰNG NGÀY (MẶC ĐỊNH) ---
+        const rawDraws = await db.collection('draws').find({ lotteryType }).sort({ drawDate: -1 }).limit(20).toArray();
+        const existingSet = new Set(rawDraws.map((d) => `${d.id}-${d.source}`));
+
+        const { draws: latestFromSource, source } = await fetchLatestDrawsFromSource(lotteryType, 3);
+        results[lotteryType].source = source;
+
+        for (const draw of latestFromSource) {
+          if (existingSet.has(`${draw.id}-${source}`)) {
+            results[lotteryType].skipped.push(draw.id);
+            continue;
+          }
+
+          await addDraw({
+            ...draw,
+            source,
+            syncedAt: new Date().toISOString(),
+          });
+          results[lotteryType].inserted.push(draw.id);
+        }
       }
+
     } catch (error: any) {
       console.error(`Error syncing draws for ${lotteryType}:`, error);
       results[lotteryType].error = error?.message || 'Lỗi không xác định';
@@ -65,10 +104,19 @@ export async function GET(req: NextRequest) {
   const success = LOTTERY_TYPES.every((t) => !results[t].error);
   const runAt = new Date().toISOString();
 
-  await saveCronLog({ runAt, triggeredBy, triggeredByEmail, results, success });
+  // Ghi log là "best effort": nếu MongoDB không kết nối được thì bản thân saveCronLog
+  // cũng ném lỗi. Không bắt ở đây thì route crash và Next trả 500 với body rỗng,
+  // khiến phía client vỡ ở `res.json()` thay vì nhận được thông báo lỗi rõ ràng.
+  let logError: string | undefined;
+  try {
+    await saveCronLog({ runAt, triggeredBy, triggeredByEmail, results, success });
+  } catch (error: any) {
+    console.error('Không ghi được cron log:', error);
+    logError = error?.message || 'Không ghi được cron log';
+  }
 
   return NextResponse.json(
-    { success, syncedAt: runAt, results },
-    { status: success ? 200 : 207 }
+    { success: success && !logError, syncedAt: runAt, results, ...(logError ? { error: logError } : {}) },
+    { status: success && !logError ? 200 : 207 }
   );
 }

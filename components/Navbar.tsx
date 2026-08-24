@@ -15,6 +15,13 @@ import {
   LogIn,
   ShieldCheck,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export type NavTab = 'dashboard' | 'suggestions' | 'chat' | 'education';
 
@@ -114,6 +121,57 @@ export const Navbar: React.FC = () => {
               </div>
             </Link>
 
+            {/* User Auth (Optional Firebase Login) */}
+            <div className="flex items-center gap-2 shrink-0">
+              {user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300 hover:bg-slate-800/80 transition-colors cursor-pointer outline-none"
+                    title={user.email || 'Tài khoản người dùng'}
+                  >
+                    {user.photoURL ? (
+                      <img
+                        src={user.photoURL}
+                        alt="avatar"
+                        className="w-5 h-5 rounded-full object-cover"
+                      />
+                    ) : (
+                      <UserIcon className="w-3.5 h-3.5 text-teal-400" />
+                    )}
+                    <span className="hidden sm:inline truncate max-w-[120px]">
+                      {user.displayName || user.email?.split('@')[0]}
+                    </span>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 bg-slate-950 border-slate-800">
+                    <div className="px-2 py-1.5">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium leading-none text-slate-200">{user.displayName || 'Người dùng'}</p>
+                        <p className="text-xs leading-none text-slate-400 truncate">{user.email}</p>
+                      </div>
+                    </div>
+                    <DropdownMenuSeparator className="bg-slate-800" />
+                    <DropdownMenuItem
+                      onClick={handleLogout}
+                      className="text-red-400 focus:text-red-300 focus:bg-red-500/10 cursor-pointer"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Đăng xuất
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openAuthModal}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800/80 text-slate-300 hover:text-slate-100 border border-slate-800 text-xs font-medium transition-all cursor-pointer"
+                >
+                  <LogIn className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Đăng nhập</span>
+                  <span className="hidden sm:inline text-slate-500">(tùy chọn)</span>
+                </button>
+              )}
+            </div>
+
             {/* Lottery Switcher for Mobile Header (< 768px) */}
             <div className="md:hidden flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 shrink-0">
               <Link
@@ -136,49 +194,6 @@ export const Navbar: React.FC = () => {
               >
                 Power 6/55
               </Link>
-            </div>
-
-            {/* User Auth (Optional Firebase Login) */}
-            <div className="flex items-center gap-2 shrink-0">
-              {user ? (
-                <div className="flex items-center gap-2">
-                  <div
-                    className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300"
-                    title={user.email || 'Tài khoản người dùng'}
-                  >
-                    {user.photoURL ? (
-                      <img
-                        src={user.photoURL}
-                        alt="avatar"
-                        className="w-5 h-5 rounded-full object-cover"
-                      />
-                    ) : (
-                      <UserIcon className="w-3.5 h-3.5 text-teal-400" />
-                    )}
-                    <span className="hidden sm:inline truncate max-w-[120px]">
-                      {user.displayName || user.email?.split('@')[0]}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-colors cursor-pointer"
-                    title="Đăng xuất"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={openAuthModal}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800/80 text-slate-300 hover:text-slate-100 border border-slate-800 text-xs font-medium transition-all cursor-pointer"
-                >
-                  <LogIn className="w-3.5 h-3.5 text-teal-400" />
-                  <span>Đăng nhập</span>
-                  <span className="hidden sm:inline text-slate-500">(tùy chọn)</span>
-                </button>
-              )}
             </div>
           </div>
 

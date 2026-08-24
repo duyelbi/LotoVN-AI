@@ -12,31 +12,18 @@ import {
   CronLogRecord,
 } from './types';
 import {
-  SEED_DRAWS_MEGA645,
-  SEED_DRAWS_POWER655,
-  SEED_SUGGESTION_LOGS,
   calculateNumberStats,
   calculateEvenOdd,
   calculateHighLow,
   calculateTrendData,
 } from './seed-data';
 
-// Global in-memory fallback store so the application runs seamlessly
-// even before MONGODB_URI is provided by the user
-let memoryDrawsMega: DrawRecord[] = [...SEED_DRAWS_MEGA645];
-let memoryDrawsPower: DrawRecord[] = [...SEED_DRAWS_POWER655];
-let memorySuggestions: SuggestionRecord[] = [...SEED_SUGGESTION_LOGS];
-let memoryCronLogs: CronLogRecord[] = [];
-
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
 let connectPromise: Promise<Db | null> | null = null;
 let lastFailedTime = 0;
-const RETRY_COOLDOWN_MS = 60000; // 60s cooldown on connection failures
+const RETRY_COOLDOWN_MS = 60000;
 
-// `createIndex` là no-op nếu index đã tồn tại đúng spec — gọi mỗi lần connect mới an toàn.
-// Không tách collection riêng cho mega645/power655 (schema giống hệt nhau, dữ liệu nhỏ) —
-// compound index theo lotteryType là đủ để query nhanh mà không phải nhân đôi logic.
 async function ensureIndexes(db: Db): Promise<void> {
   try {
     await Promise.all([
@@ -49,37 +36,36 @@ async function ensureIndexes(db: Db): Promise<void> {
   }
 }
 
-async function getMongoDb(): Promise<Db | null> {
+export async function getMongoDb(): Promise<Db> {
   const uri = process.env.MONGODB_URI;
   if (!uri || uri.trim() === '') {
-    return null;
+    throw new Error('Chưa cấu hình MONGODB_URI.');
   }
 
   if (cachedDb) {
     return cachedDb;
   }
 
-  // Fast-fail if recent connection attempt failed
   if (Date.now() - lastFailedTime < RETRY_COOLDOWN_MS) {
-    return null;
+    throw new Error('Kết nối MongoDB đang trong thời gian chờ (cooldown) do lỗi trước đó.');
   }
 
   if (connectPromise) {
-    return connectPromise;
+    return (await connectPromise)!;
   }
 
   connectPromise = (async () => {
     try {
       cachedClient = new MongoClient(uri, {
-        serverSelectionTimeoutMS: 3000,
-        connectTimeoutMS: 3000,
+        serverSelectionTimeoutMS: 5000,
+        connectTimeoutMS: 5000,
       });
       await cachedClient.connect();
       cachedDb = cachedClient.db('lotovn_ai');
       await ensureIndexes(cachedDb);
       return cachedDb;
     } catch (err) {
-      console.warn('MongoDB connection failed, falling back to local seed data:', err);
+      console.warn('MongoDB connection failed:', err);
       lastFailedTime = Date.now();
       if (cachedClient) {
         try {
@@ -87,50 +73,50 @@ async function getMongoDb(): Promise<Db | null> {
         } catch (_) {}
         cachedClient = null;
       }
-      return null;
+      throw new Error(`Không thể kết nối đến MongoDB: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       connectPromise = null;
     }
   })();
 
-  return connectPromise;
+  return (await connectPromise)!;
 }
 
-// ----------------------------------------------------
-// DRAWS REPOSITORY
-// ----------------------------------------------------
-export const getDraws = cache(async (lotteryType: LotteryType, limit = 50): Promise<DrawRecord[]> => {
+export const getDraws = cache(async (lotteryType: LotteryType, limit: number | 'all' = 50): Promise<DrawRecord[]> => {
   const db = await getMongoDb();
-  if (db) {
-    try {
-      const col = db.collection<DrawRecord>('draws');
-      const docs = await col
-        .find({ lotteryType })
-        .sort({ drawDate: -1 })
-        .limit(limit)
-        .toArray();
-      if (docs && docs.length > 0) {
-        return docs.map((doc) => ({
-          id: doc.id,
-          lotteryType: doc.lotteryType,
-          drawDate: doc.drawDate,
-          numbers: doc.numbers,
-          bonusNumber: doc.bonusNumber,
-          jackpotValue: doc.jackpotValue,
-          hasWinner: doc.hasWinner,
-          createdAt: doc.createdAt,
-        }));
+  const col = db.collection<DrawRecord>('draws');
+  
+  // Use aggregation to deduplicate by id, preferring 'official' source
+  const pipeline: any[] = [
+    { $match: { lotteryType } },
+    { $sort: { drawDate: -1, source: -1 } }, // 'official' > 'community' alphabetically
+    { $group: {
+        _id: "$id",
+        doc: { $first: "$$ROOT" }
       }
-    } catch (error) {
-      console.warn('MongoDB fetch error, using fallback:', error);
-    }
+    },
+    { $replaceRoot: { newRoot: "$doc" } },
+    { $sort: { drawDate: -1 } }
+  ];
+
+  if (limit !== 'all') {
+    pipeline.push({ $limit: limit });
   }
 
-  // Fallback to in-memory seed data
-  const list = lotteryType === 'mega645' ? memoryDrawsMega : memoryDrawsPower;
-  return [...list]
-    .sort((a, b) => new Date(b.drawDate).getTime() - new Date(a.drawDate).getTime())
-    .slice(0, limit);
+  const docs = await col.aggregate(pipeline).toArray();
+  
+  return docs.map((doc) => ({
+    id: doc.id,
+    lotteryType: doc.lotteryType,
+    drawDate: doc.drawDate,
+    numbers: doc.numbers,
+    bonusNumber: doc.bonusNumber,
+    jackpotValue: doc.jackpotValue,
+    hasWinner: doc.hasWinner,
+    createdAt: doc.createdAt,
+    source: doc.source,
+    syncedAt: doc.syncedAt,
+  }));
 });
 
 export async function addDraw(draw: Omit<DrawRecord, 'createdAt'>): Promise<DrawRecord> {
@@ -140,37 +126,49 @@ export async function addDraw(draw: Omit<DrawRecord, 'createdAt'>): Promise<Draw
   };
 
   const db = await getMongoDb();
-  if (db) {
-    try {
-      await db.collection<DrawRecord>('draws').insertOne(newRecord);
-    } catch (error) {
-      console.warn('Failed inserting draw into MongoDB:', error);
-    }
-  }
-
-  if (newRecord.lotteryType === 'mega645') {
-    memoryDrawsMega.unshift(newRecord);
-  } else {
-    memoryDrawsPower.unshift(newRecord);
-  }
-
-  // Automatically evaluate pending suggestions against this new draw
+  await db.collection<DrawRecord>('draws').insertOne(newRecord);
   await evaluatePendingSuggestions(newRecord);
-
   return newRecord;
 }
 
-// ----------------------------------------------------
-// STATISTICS
-// ----------------------------------------------------
-export const getLotteryStats = cache(async (lotteryType: LotteryType, timeRangeDraws = 30): Promise<LotteryStats> => {
+export async function addDrawsBulk(draws: Omit<DrawRecord, 'createdAt'>[]): Promise<{ upsertedCount: number, modifiedCount: number }> {
+  if (draws.length === 0) return { upsertedCount: 0, modifiedCount: 0 };
+  
+  const db = await getMongoDb();
+  
+  const bulkOps = draws.map((draw) => ({
+    updateOne: {
+      filter: { id: draw.id, lotteryType: draw.lotteryType, source: draw.source },
+      update: { 
+        $setOnInsert: {
+          ...draw,
+          createdAt: new Date().toISOString()
+        } 
+      },
+      upsert: true
+    }
+  }));
+
+  const result = await db.collection<DrawRecord>('draws').bulkWrite(bulkOps, { ordered: false });
+  return { upsertedCount: result.upsertedCount, modifiedCount: result.modifiedCount };
+}
+
+
+export async function updateDrawSource(drawId: string, source: 'official'): Promise<void> {
+  const db = await getMongoDb();
+  await db.collection<DrawRecord>('draws').updateOne(
+    { id: drawId },
+    { $set: { source, syncedAt: new Date().toISOString() } }
+  );
+}
+
+export const getLotteryStats = cache(async (lotteryType: LotteryType, timeRangeDraws: number | 'all' = 30): Promise<LotteryStats> => {
   const draws = await getDraws(lotteryType, timeRangeDraws);
   const numberStats = calculateNumberStats(draws, lotteryType);
   const evenOdd = calculateEvenOdd(draws);
   const highLow = calculateHighLow(draws, lotteryType);
   const trend = calculateTrendData(draws);
 
-  // Summary indicators
   const hotNumbers = numberStats.filter((s) => s.status === 'hot').sort((a, b) => b.count - a.count);
   const coldNumbers = numberStats.filter((s) => s.status === 'cold').sort((a, b) => a.count - b.count);
   const overdueNumbers = [...numberStats].sort((a, b) => b.drought - a.drought).slice(0, 10);
@@ -189,147 +187,127 @@ export const getLotteryStats = cache(async (lotteryType: LotteryType, timeRangeD
   };
 });
 
-// ----------------------------------------------------
-// SUGGESTIONS REPOSITORY & ACCURACY TRACKING
-// ----------------------------------------------------
 export const getSuggestionLogs = cache(async (lotteryType?: LotteryType): Promise<SuggestionRecord[]> => {
   const db = await getMongoDb();
-  if (db) {
-    try {
-      const filter = lotteryType ? { lotteryType } : {};
-      const docs = await db
-        .collection<SuggestionRecord>('suggestions')
-        .find(filter)
-        .sort({ createdAt: -1 })
-        .limit(30)
-        .toArray();
-      if (docs && docs.length > 0) {
-        return docs;
-      }
-    } catch (error) {
-      console.warn('MongoDB suggestion query error:', error);
-    }
-  }
-
-  const list = lotteryType
-    ? memorySuggestions.filter((s) => s.lotteryType === lotteryType)
-    : memorySuggestions;
-  return [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const filter = lotteryType ? { lotteryType } : {};
+  return await db
+    .collection<SuggestionRecord>('suggestions')
+    .find(filter)
+    .sort({ createdAt: -1 })
+    .limit(30)
+    .toArray();
 });
 
 export async function saveSuggestionLog(suggestion: SuggestionRecord): Promise<SuggestionRecord> {
   const db = await getMongoDb();
-  if (db) {
-    try {
-      await db.collection<SuggestionRecord>('suggestions').insertOne(suggestion);
-    } catch (error) {
-      console.warn('Failed inserting suggestion to MongoDB:', error);
-    }
-  }
-
-  memorySuggestions.unshift(suggestion);
+  await db.collection<SuggestionRecord>('suggestions').insertOne(suggestion);
   return suggestion;
 }
 
-// ----------------------------------------------------
-// CRON LOGS (lịch sử các lần chạy đồng bộ kỳ quay — xem app/admin)
-// ----------------------------------------------------
 export async function saveCronLog(log: Omit<CronLogRecord, 'id'>): Promise<CronLogRecord> {
   const record: CronLogRecord = {
     ...log,
     id: `cron-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   };
-
   const db = await getMongoDb();
-  if (db) {
-    try {
-      await db.collection<CronLogRecord>('cron_logs').insertOne(record);
-    } catch (error) {
-      console.warn('Failed inserting cron log into MongoDB:', error);
-    }
-  }
-
-  memoryCronLogs.unshift(record);
-  memoryCronLogs = memoryCronLogs.slice(0, 100);
+  await db.collection<CronLogRecord>('cron_logs').insertOne(record);
   return record;
 }
 
 export const getCronLogs = cache(async (limit = 20): Promise<CronLogRecord[]> => {
   const db = await getMongoDb();
-  if (db) {
-    try {
-      const docs = await db
-        .collection<CronLogRecord>('cron_logs')
-        .find({})
-        .sort({ runAt: -1 })
-        .limit(limit)
-        .toArray();
-      if (docs && docs.length > 0) {
-        return docs.map((doc) => ({
-          id: doc.id,
-          runAt: doc.runAt,
-          triggeredBy: doc.triggeredBy,
-          triggeredByEmail: doc.triggeredByEmail,
-          results: doc.results,
-          success: doc.success,
-        }));
-      }
-    } catch (error) {
-      console.warn('MongoDB cron_logs query error:', error);
-    }
-  }
+  const docs = await db
+    .collection<CronLogRecord>('cron_logs')
+    .find({})
+    .sort({ runAt: -1 })
+    .limit(limit)
+    .toArray();
+  
+  return docs.map((doc) => ({
+    id: doc.id,
+    runAt: doc.runAt,
+    triggeredBy: doc.triggeredBy,
+    triggeredByEmail: doc.triggeredByEmail,
+    results: doc.results,
+    success: doc.success,
+  }));
+});
 
-  return memoryCronLogs.slice(0, limit);
+export interface AdminDataOverview {
+  totalDraws: number;
+  megaDrawsCount: number;
+  powerDrawsCount: number;
+  officialSourceCount: number;
+  communitySourceCount: number;
+  latestMegaDraw?: DrawRecord;
+  latestPowerDraw?: DrawRecord;
+  recentDraws: DrawRecord[];
+}
+
+export const getAdminDataOverview = cache(async (): Promise<AdminDataOverview> => {
+  const db = await getMongoDb();
+  const collection = db.collection<DrawRecord>('draws');
+  const totalDraws = await collection.countDocuments({});
+  const megaDrawsCount = await collection.countDocuments({ lotteryType: 'mega645' });
+  const powerDrawsCount = await collection.countDocuments({ lotteryType: 'power655' });
+  const officialSourceCount = await collection.countDocuments({ source: 'official' });
+  const communitySourceCount = await collection.countDocuments({ source: 'community' });
+
+  const latestMegaDocs = await collection.find({ lotteryType: 'mega645' }).sort({ drawDate: -1 }).limit(1).toArray();
+  const latestPowerDocs = await collection.find({ lotteryType: 'power655' }).sort({ drawDate: -1 }).limit(1).toArray();
+  const recentDocs = await collection.find({}).sort({ drawDate: -1, createdAt: -1 }).limit(10).toArray();
+
+  const mapDoc = (doc: any): DrawRecord => ({
+    id: doc.id,
+    lotteryType: doc.lotteryType,
+    drawDate: doc.drawDate,
+    numbers: doc.numbers,
+    bonusNumber: doc.bonusNumber,
+    jackpotValue: doc.jackpotValue,
+    hasWinner: doc.hasWinner,
+    createdAt: doc.createdAt,
+    source: doc.source,
+    syncedAt: doc.syncedAt,
+  });
+
+  return {
+    totalDraws,
+    megaDrawsCount,
+    powerDrawsCount,
+    officialSourceCount,
+    communitySourceCount,
+    latestMegaDraw: latestMegaDocs[0] ? mapDoc(latestMegaDocs[0]) : undefined,
+    latestPowerDraw: latestPowerDocs[0] ? mapDoc(latestPowerDocs[0]) : undefined,
+    recentDraws: recentDocs.map(mapDoc),
+  };
 });
 
 export async function evaluatePendingSuggestions(newDraw: DrawRecord) {
   const winSet = new Set(newDraw.numbers);
-
-  // Evaluate in-memory
-  memorySuggestions.forEach((sug) => {
-    if (sug.lotteryType === newDraw.lotteryType && sug.status === 'pending_draw') {
-      const matched: number[] = [];
-      sug.suggestedNumbers.forEach((item) => {
-        if (winSet.has(item.number)) {
-          matched.push(item.number);
-        }
-      });
-      sug.matchedNumbers = matched;
-      sug.matchCount = matched.length;
-      sug.targetDrawId = newDraw.id;
-      sug.status = 'evaluated';
-    }
-  });
-
-  // Evaluate in MongoDB if connected
   const db = await getMongoDb();
-  if (db) {
-    try {
-      const col = db.collection<SuggestionRecord>('suggestions');
-      const pending = await col
-        .find({ lotteryType: newDraw.lotteryType, status: 'pending_draw' })
-        .toArray();
-      for (const doc of pending) {
-        const matched: number[] = [];
-        doc.suggestedNumbers.forEach((item) => {
-          if (winSet.has(item.number)) {
-            matched.push(item.number);
-          }
-        });
-        await col.updateOne(
-          { _id: doc._id },
-          {
-            $set: {
-              matchedNumbers: matched,
-              matchCount: matched.length,
-              targetDrawId: newDraw.id,
-              status: 'evaluated',
-            },
-          }
-        );
+  
+  const col = db.collection<SuggestionRecord>('suggestions');
+  const pending = await col
+    .find({ lotteryType: newDraw.lotteryType, status: 'pending_draw' })
+    .toArray();
+  
+  for (const doc of pending) {
+    const matched: number[] = [];
+    doc.suggestedNumbers.forEach((item) => {
+      if (winSet.has(item.number)) {
+        matched.push(item.number);
       }
-    } catch (err) {
-      console.warn('Failed evaluating MongoDB pending suggestions:', err);
-    }
+    });
+    await col.updateOne(
+      { _id: doc._id },
+      {
+        $set: {
+          matchedNumbers: matched,
+          matchCount: matched.length,
+          targetDrawId: newDraw.id,
+          status: 'evaluated',
+        },
+      }
+    );
   }
 }
